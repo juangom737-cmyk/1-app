@@ -1,0 +1,16 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+    overflow: hidden;
+    background-color: #0b0f19;
+    color: #f1f5f9;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+}
+
+.font-hud {
+  font-family: 'Chakra Petch', monospace, sans-serif;
+}

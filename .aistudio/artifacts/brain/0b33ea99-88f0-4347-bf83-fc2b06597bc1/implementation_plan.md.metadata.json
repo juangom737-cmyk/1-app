@@ -1,0 +1,6 @@
+{
+  "summary":  "Plan de implementación técnica para elevar el juego de superhéroe 3D a calidad AAA: Integración de física de cuerpos rígidos y destrucción (Rapier 3D), vuelo supersónico cinemático con inercia y estampidos sonicos, sistema de combate 3D aéreo y terrestre con encadenamiento de combos y agarre/lanzamiento de vehículos (Tecla F + trayectoria), IA de enemigos reactiva con ragdoll y fijación de objetivos, ciudad viva con tráfico destructible y optimizaciones de rendimiento a 60 FPS.",
+  "updatedAt":  "2026-10-11T18:59:29.617118561Z",
+  "requestFeedback":  true,
+  "userFacing":  true
+}
