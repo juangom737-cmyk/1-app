@@ -85,3 +85,17 @@ export interface CityBuilding {
   isIconic?: boolean;
   color?: string;
 }
+
+export type GraphicQualityProfile = 'radeon-optimized' | 'balanced-30' | 'ultra-fidelity';
+
+export interface PerformanceMetrics {
+  fps: number;
+  avgFps: number;
+  minFps: number;
+  frameTimeMs: number;
+  p95FrameTimeMs: number;
+  drawCalls: number;
+  triangles: number;
+  activeProfile: GraphicQualityProfile;
+}
+
