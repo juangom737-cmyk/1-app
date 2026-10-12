@@ -29,6 +29,7 @@ export default function App() {
     activeMission: Mission | null;
     currentMissionIndex: number;
     allMissions: Mission[];
+    citizenDialogue?: string | null;
   }>({
     playerX: 0,
     playerZ: 80,
@@ -44,6 +45,7 @@ export default function App() {
     activeMission: null,
     currentMissionIndex: 0,
     allMissions: [],
+    citizenDialogue: null,
   });
 
   const [activePower, setActivePower] = useState<PowerType | null>('heat-vision');
@@ -198,6 +200,7 @@ export default function App() {
             onSwitchMission={(idx) => setMissionIndexToSwitch(idx)}
             missionList={playerState.allMissions}
             currentMissionIndex={playerState.currentMissionIndex}
+            citizenDialogue={playerState.citizenDialogue}
             minimapNode={
               <Minimap
                 playerX={playerState.playerX}

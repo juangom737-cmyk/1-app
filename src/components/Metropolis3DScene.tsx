@@ -31,6 +31,7 @@ interface Metropolis3DSceneProps {
     isHoldingObject?: boolean;
     hasLockedTarget?: boolean;
     comboStep?: number;
+    citizenDialogue?: string | null;
   }) => void;
   activePower: PowerType | null;
   xrayActive: boolean;
@@ -796,9 +797,9 @@ export const Metropolis3DScene: React.FC<Metropolis3DSceneProps> = ({
         posRef.current.z = Math.max(-1100, Math.min(1100, posRef.current.z));
       }
 
-      // Ground limit and Hero Landing impact
-      if (posRef.current.y <= 1.05) {
-        if (velRef.current.y < -18 && !isHeroLandingRef.current) {
+      // Ground limit and Hero Landing impact (strictly grounded at pavement y = 0.0)
+      if (posRef.current.y <= 0.08) {
+        if (velRef.current.y < -16 && !isHeroLandingRef.current) {
           // HERO LANDING IMPACT!
           isHeroLandingRef.current = true;
           heroLandingTimerRef.current = 0.55;
@@ -808,7 +809,7 @@ export const Metropolis3DScene: React.FC<Metropolis3DSceneProps> = ({
           superman.triggerGroundSlamShockwave();
           audioService.playGroundSlam();
           destruction.triggerImpact(
-            new THREE.Vector3(posRef.current.x, 0.1, posRef.current.z),
+            new THREE.Vector3(posRef.current.x, 0.05, posRef.current.z),
             new THREE.Vector3(0, 1, 0),
             Math.min(125, Math.abs(velRef.current.y) * 3.8)
           );
@@ -823,7 +824,7 @@ export const Metropolis3DScene: React.FC<Metropolis3DSceneProps> = ({
             if (hits > 0) onMissionCompleted(hits * 10);
           }
         }
-        posRef.current.y = 1.0;
+        posRef.current.y = 0.0;
         velRef.current.y = 0;
       }
 
@@ -1026,7 +1027,14 @@ export const Metropolis3DScene: React.FC<Metropolis3DSceneProps> = ({
       const isHighOrbit = posRef.current.y > 750;
       if (!isHighOrbit) {
         traffic.update(delta, posRef.current.x, posRef.current.z, posRef.current.y);
-        npcs.update(posRef.current.x, posRef.current.y, posRef.current.z, delta);
+        npcs.update(
+          posRef.current.x,
+          posRef.current.y,
+          posRef.current.z,
+          delta,
+          isSupersonicRef.current,
+          isHeroLandingRef.current
+        );
       }
 
       // Freeze nearby traffic cars if using Freeze Breath
@@ -1060,14 +1068,14 @@ export const Metropolis3DScene: React.FC<Metropolis3DSceneProps> = ({
         ? 16.5
         : isFlyingRef.current
         ? 11.2
-        : 5.4;
+        : 4.8;
       const camElevation = isCosmos
         ? 6.8
         : isSupersonicRef.current
         ? 5.8
         : isFlyingRef.current
         ? 4.6
-        : 2.2;
+        : 1.85;
 
       // Over-the-shoulder subtle lateral camera offset for cinematic AAA presence
       const shoulderOffset = (isFlyingRef.current || isCosmos) ? 0.0 : 0.42;
@@ -1085,7 +1093,7 @@ export const Metropolis3DScene: React.FC<Metropolis3DSceneProps> = ({
         if (camCol.hit) {
           targetCamX = posRef.current.x + Math.sin(rotYRef.current) * 2.8 + rightX * 0.5;
           targetCamZ = posRef.current.z + Math.cos(rotYRef.current) * 2.8 + rightZ * 0.5;
-          targetCamY = posRef.current.y + 1.9;
+          targetCamY = posRef.current.y + 1.85;
         }
       }
 
@@ -1093,7 +1101,7 @@ export const Metropolis3DScene: React.FC<Metropolis3DSceneProps> = ({
       const lookAheadDist = isSupersonicRef.current ? 22.0 : 15.0;
       let lookTargetX = posRef.current.x - Math.sin(rotYRef.current) * lookAheadDist;
       let lookTargetZ = posRef.current.z - Math.cos(rotYRef.current) * lookAheadDist;
-      let lookTargetY = posRef.current.y + (isDiving ? -9.5 : -0.5) - cameraPitchRef.current * 5.5;
+      let lookTargetY = posRef.current.y + (isFlyingRef.current ? (isDiving ? -9.5 : -0.5) : 1.45) - cameraPitchRef.current * 5.5;
 
       if (combatRef.current?.isLockOnActive && combatRef.current?.lockedTarget) {
         lookTargetX = combatRef.current.lockedTarget.x;
@@ -1167,6 +1175,7 @@ export const Metropolis3DScene: React.FC<Metropolis3DSceneProps> = ({
           isHoldingObject: combatRef.current?.isHolding,
           hasLockedTarget: combatRef.current?.isLockOnActive,
           comboStep: combatRef.current?.getComboStep(),
+          citizenDialogue: npcs.getActiveDialogue(),
         });
       }
     };

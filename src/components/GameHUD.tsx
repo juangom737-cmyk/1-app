@@ -26,6 +26,7 @@ interface GameHUDProps {
   isHoldingObject?: boolean;
   hasLockedTarget?: boolean;
   comboStep?: number;
+  citizenDialogue?: string | null;
 }
 
 export const GameHUD: React.FC<GameHUDProps> = ({
@@ -52,6 +53,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   isHoldingObject = false,
   hasLockedTarget = false,
   comboStep = 0,
+  citizenDialogue = null,
 }) => {
   const [isMissionMinimized, setIsMissionMinimized] = useState(() => {
     return typeof window !== 'undefined' ? window.innerWidth < 1024 : false;
@@ -59,6 +61,18 @@ export const GameHUD: React.FC<GameHUDProps> = ({
 
   return (
     <div className="absolute inset-0 pointer-events-none select-none flex flex-col justify-between p-4 z-20">
+      {/* Dynamic Citizen Reaction Dialogue Popup */}
+      {citizenDialogue && (
+        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-40 pointer-events-none animate-in fade-in slide-in-from-top-2 duration-300">
+          <div className="flex items-center gap-2.5 px-5 py-2.5 rounded-2xl bg-slate-950/90 text-amber-300 text-xs font-semibold shadow-2xl backdrop-blur-md border border-amber-400/80">
+            <span className="font-hud tracking-wider text-amber-400 uppercase text-[11px] font-bold">
+              CIUDADANO:
+            </span>
+            <span className="italic text-white">"{citizenDialogue}"</span>
+          </div>
+        </div>
+      )}
+
       {/* --- TOP BAR (Strict Top Bar Contract) --- */}
       <header className="pointer-events-auto flex items-center justify-between gap-8 px-6 py-3.5 bg-slate-950/85 backdrop-blur-md rounded-2xl border border-slate-800 shadow-2xl">
         {/* Zone 1: Brand Wordmark */}

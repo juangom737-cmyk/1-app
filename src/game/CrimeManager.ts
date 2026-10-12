@@ -15,6 +15,25 @@ export interface UrbanProp {
   rotVz: number;
 }
 
+interface BulletTracer {
+  mesh: THREE.Mesh;
+  vx: number;
+  vy: number;
+  vz: number;
+  life: number;
+  maxLife: number;
+  isPlasma?: boolean;
+}
+
+interface DeflectionSpark {
+  mesh: THREE.Mesh;
+  vx: number;
+  vy: number;
+  vz: number;
+  life: number;
+  maxLife: number;
+}
+
 export class CrimeManager {
   public missions: Mission[] = [];
   public activeMissionIndex: number = 0;
@@ -25,6 +44,7 @@ export class CrimeManager {
   private missionGroup: THREE.Group;
   private propsGroup: THREE.Group;
   private shardsGroup: THREE.Group;
+  private combatVfxGroup: THREE.Group;
   private beaconMesh: THREE.Mesh | null = null;
   private enemyMeshes: Map<string, THREE.Group> = new Map();
   private frozenIceMeshes: Map<string, THREE.Mesh> = new Map();
@@ -39,14 +59,25 @@ export class CrimeManager {
     maxLife: number;
   }[] = [];
 
+  // Combat AI & Projectile state
+  private bulletTracers: BulletTracer[] = [];
+  private deflectionSparks: DeflectionSpark[] = [];
+  private thugShootTimers: Map<string, number> = new Map();
+  private thugMuzzleFlashTimers: Map<string, number> = new Map();
+  private droneShootTimers: Map<string, number> = new Map();
+  private lastRicochetSoundTime: number = 0;
+
   constructor(scene: THREE.Scene) {
     this.scene = scene;
     this.missionGroup = new THREE.Group();
     this.propsGroup = new THREE.Group();
     this.shardsGroup = new THREE.Group();
+    this.combatVfxGroup = new THREE.Group();
+
     this.scene.add(this.missionGroup);
     this.scene.add(this.propsGroup);
     this.scene.add(this.shardsGroup);
+    this.scene.add(this.combatVfxGroup);
 
     this.initMissions();
     this.createBeacon();
@@ -62,10 +93,10 @@ export class CrimeManager {
         title: 'Atraco Armado en el Banco Central',
         locationName: 'Distrito Financiero de Metrópolis',
         x: -80,
-        y: 1.5,
+        y: 0.0,
         z: -90,
-        description: 'Una banda armada con tecnología experimental está asaltando la bóveda principal del Banco Central.',
-        objectiveText: 'Vuela al Banco y usa Visión Térmica o Golpe Sísmico para neutralizar a los asaltantes.',
+        description: 'Una célula fuertemente armada está asaltando la cámara de seguridad con tecnología militar experimental.',
+        objectiveText: 'Neutraliza a los asaltantes armados usando Visión Térmica, Aliento Gélido o Combate Kriptoniano.',
         progress: 0,
         maxProgress: 4,
         rewardHope: 25,
@@ -99,7 +130,7 @@ export class CrimeManager {
         y: 160,
         z: 0,
         description: 'Drones de combate no tripulados están amenazando la esfera del Daily Planet y el tráfico aéreo.',
-        objectiveText: 'Intercepta los drones en pleno vuelo y destrúyelos con Visión Térmica.',
+        objectiveText: 'Intercepta los drones en pleno vuelo y destrúyelos con Visión Térmica o embestidas Mach.',
         progress: 0,
         maxProgress: 3,
         rewardHope: 25,
@@ -113,130 +144,307 @@ export class CrimeManager {
         title: 'Persecución de Vehículo Blindado',
         locationName: 'Gran Avenida Centenario',
         x: 0,
-        y: 1.5,
+        y: 0.8,
         z: 80,
-        description: 'Un vehículo blindado de asalto huye a gran velocidad evadiendo las patrullas policiales.',
-        objectiveText: 'Usa vuelo supersónico para interceptar el vehículo y congélalo con Aliento Gélido.',
+        description: 'Un todoterreno blindado de escape huye a gran velocidad evadiendo los bloqueos policiales.',
+        objectiveText: 'Usa vuelo supersónico para interceptar el vehículo y congélalo con Aliento Gélido o arrójalo.',
         progress: 0,
         maxProgress: 1,
-        rewardHope: 20,
+        rewardHope: 35,
         completed: false,
         active: false,
-        iconColor: '#eab308',
+        iconColor: '#a855f7',
       },
     ];
   }
 
   private createBeacon() {
-    // 3D vertical light beam pointing from sky to mission
-    const beaconGeo = new THREE.CylinderGeometry(1.2, 1.2, 300, 16);
+    const beaconGeo = new THREE.CylinderGeometry(1.2, 12, 140, 16, 1, true);
+    beaconGeo.translate(0, 70, 0);
     const beaconMat = new THREE.MeshBasicMaterial({
       color: 0xef4444,
       transparent: true,
-      opacity: 0.35,
+      opacity: 0.45,
+      side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
     });
     this.beaconMesh = new THREE.Mesh(beaconGeo, beaconMat);
-    this.missionGroup.add(this.beaconMesh);
-
-    // Ground target circle
-    const circleGeo = new THREE.RingGeometry(2, 6, 24);
-    const circleMat = new THREE.MeshBasicMaterial({ color: 0xef4444, side: THREE.DoubleSide });
-    const circle = new THREE.Mesh(circleGeo, circleMat);
-    circle.rotation.x = -Math.PI / 2;
-    circle.position.y = -149;
-    this.beaconMesh.add(circle);
+    this.scene.add(this.beaconMesh);
   }
 
   private initUrbanProps() {
-    // Geometries for punchable destructible urban elements
-    const dumpsterGeo = new THREE.BoxGeometry(2.4, 1.4, 1.6);
-    const crateGeo = new THREE.BoxGeometry(1.4, 1.4, 1.4);
-    const barrelGeo = new THREE.CylinderGeometry(0.55, 0.55, 1.3, 10);
-
-    const dumpsterMat = new THREE.MeshStandardMaterial({ color: 0x065f46, roughness: 0.6, metalness: 0.5 });
-    const crateMat = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.8 });
-    const barrelMat = new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.4, metalness: 0.6 });
-
-    // Spawn 32 punchable props across downtown street corners & alleys
-    const propCoords = [
-      // Near bank and central plaza
-      [-65, -75, 'dumpster'], [-95, -85, 'crate'], [-75, -105, 'barrel'],
-      [-50, -60, 'crate'], [-85, -65, 'barrel'], [-60, -95, 'dumpster'],
-      // Near Daily Planet
-      [15, -15, 'dumpster'], [-20, 20, 'crate'], [25, 25, 'barrel'],
-      [-15, -25, 'dumpster'], [30, -10, 'barrel'], [-25, 15, 'crate'],
-      // Near LexCorp
-      [105, -85, 'dumpster'], [135, -115, 'barrel'], [95, -110, 'crate'],
-      [140, -85, 'barrel'], [110, -125, 'dumpster'],
-      // Centennial Park perimeter
-      [45, 75, 'crate'], [-45, 85, 'dumpster'], [65, 110, 'barrel'],
-      [-30, 120, 'crate'], [50, 140, 'barrel'], [-55, 160, 'dumpster'],
-      // South financial boulevard
-      [-40, -145, 'dumpster'], [40, -155, 'barrel'], [0, -140, 'crate'],
-      [-25, -170, 'barrel'], [35, -165, 'dumpster'],
+    // Street dumpsters, newspaper stands, mailboxes, and phone booths
+    const propConfigs = [
+      { type: 'dumpster', count: 14, color: 0x15803d, w: 2.2, h: 1.5, d: 1.4 },
+      { type: 'stand', count: 18, color: 0x0284c7, w: 1.4, h: 2.2, d: 1.2 },
+      { type: 'mailbox', count: 24, color: 0x1d4ed8, w: 0.8, h: 1.4, d: 0.8 },
+      { type: 'crate', count: 16, color: 0xa16207, w: 1.2, h: 1.2, d: 1.2 },
     ];
 
-    propCoords.forEach(([px, pz, type], idx) => {
-      let geo: THREE.BufferGeometry = crateGeo;
-      let mat = crateMat;
-      let yOffset = 0.7;
-
-      if (type === 'dumpster') {
-        geo = dumpsterGeo;
-        mat = dumpsterMat;
-        yOffset = 0.7;
-      } else if (type === 'barrel') {
-        geo = barrelGeo;
-        mat = barrelMat;
-        yOffset = 0.65;
-      }
-
-      const mesh = new THREE.Mesh(geo, mat);
-      const x = Number(px);
-      const z = Number(pz);
-      mesh.position.set(x, yOffset, z);
-      this.propsGroup.add(mesh);
-
-      this.urbanProps.push({
-        id: `prop_${idx}`,
-        mesh,
-        x,
-        y: yOffset,
-        z,
-        vx: 0,
-        vy: 0,
-        vz: 0,
-        rotVx: 0,
-        rotVz: 0,
+    let propId = 0;
+    propConfigs.forEach((cfg) => {
+      const geo = new THREE.BoxGeometry(cfg.w, cfg.h, cfg.d);
+      const mat = new THREE.MeshStandardMaterial({
+        color: cfg.color,
+        roughness: 0.7,
+        metalness: 0.2,
       });
+
+      for (let i = 0; i < cfg.count; i++) {
+        const id = `prop_${propId++}`;
+        const mesh = new THREE.Mesh(geo, mat);
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+
+        const x = (Math.random() - 0.5) * 440;
+        const z = (Math.random() - 0.5) * 440;
+        const y = cfg.h / 2;
+
+        mesh.position.set(x, y, z);
+        mesh.rotation.y = Math.random() * Math.PI * 2;
+        this.propsGroup.add(mesh);
+
+        this.urbanProps.push({
+          id,
+          mesh,
+          x,
+          y,
+          z,
+          vx: 0,
+          vy: 0,
+          vz: 0,
+          rotVx: 0,
+          rotVz: 0,
+        });
+      }
     });
   }
 
-  public getActiveMission(): Mission {
-    return this.missions[this.activeMissionIndex];
+  /**
+   * Builds an anatomically realistic humanoid mercenary / bank robber (1.82m height)
+   * Grounded with boots touching pavement at y = 0.0, tactical vest, balaclava with red visor,
+   * assault rifle with red laser sight and muzzle flash.
+   */
+  private createThugMesh(): THREE.Group {
+    const thugGroup = new THREE.Group();
+
+    // Attire Materials
+    const camoPantsMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.7 });
+    const combatBootMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.8 });
+    const armorVestMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.6, metalness: 0.25 });
+    const maskMat = new THREE.MeshStandardMaterial({ color: 0x090d16, roughness: 0.8 });
+    const redVisorMat = new THREE.MeshBasicMaterial({ color: 0xef4444 });
+    const weaponMat = new THREE.MeshStandardMaterial({ color: 0x020617, roughness: 0.35, metalness: 0.85 });
+
+    // 1. Tactical Combat Boots (Grounded at y = 0.0)
+    const bootGeo = new THREE.BoxGeometry(0.13, 0.08, 0.24);
+    const leftBoot = new THREE.Mesh(bootGeo, combatBootMat);
+    leftBoot.position.set(-0.13, 0.04, 0.02);
+    leftBoot.castShadow = true;
+    thugGroup.add(leftBoot);
+
+    const rightBoot = new THREE.Mesh(bootGeo, combatBootMat);
+    rightBoot.position.set(0.13, 0.04, 0.02);
+    rightBoot.castShadow = true;
+    thugGroup.add(rightBoot);
+
+    // 2. Articulated Legs & Knee Armor (y = 0.08 to 0.82)
+    const legGeo = new THREE.CylinderGeometry(0.08, 0.07, 0.74, 8);
+    const leftLeg = new THREE.Mesh(legGeo, camoPantsMat);
+    leftLeg.position.set(-0.13, 0.44, 0);
+    leftLeg.castShadow = true;
+    thugGroup.add(leftLeg);
+
+    const rightLeg = new THREE.Mesh(legGeo, camoPantsMat);
+    rightLeg.position.set(0.13, 0.44, 0);
+    rightLeg.castShadow = true;
+    thugGroup.add(rightLeg);
+
+    const kneePadGeo = new THREE.BoxGeometry(0.12, 0.12, 0.06);
+    const leftPad = new THREE.Mesh(kneePadGeo, combatBootMat);
+    leftPad.position.set(-0.13, 0.44, 0.08);
+    thugGroup.add(leftPad);
+
+    const rightPad = new THREE.Mesh(kneePadGeo, combatBootMat);
+    rightPad.position.set(0.13, 0.44, 0.08);
+    thugGroup.add(rightPad);
+
+    // 3. Torso & Armored Kevlar Vest (y = 0.82 to 1.38)
+    const vestGeo = new THREE.BoxGeometry(0.42, 0.56, 0.28);
+    const vest = new THREE.Mesh(vestGeo, armorVestMat);
+    vest.position.y = 1.12;
+    vest.castShadow = true;
+    thugGroup.add(vest);
+
+    // Ammo Pouches on chest
+    const pouchGeo = new THREE.BoxGeometry(0.09, 0.14, 0.06);
+    for (let p = -1; p <= 1; p++) {
+      const pouch = new THREE.Mesh(pouchGeo, camoPantsMat);
+      pouch.position.set(p * 0.12, 1.08, 0.16);
+      thugGroup.add(pouch);
+    }
+
+    // 4. Balaclava Head with Night-Vision Glowing Visor (y = 1.42 to 1.76)
+    const headGeo = new THREE.SphereGeometry(0.13, 10, 10);
+    const head = new THREE.Mesh(headGeo, maskMat);
+    head.position.y = 1.56;
+    head.castShadow = true;
+    thugGroup.add(head);
+
+    const visorGeo = new THREE.BoxGeometry(0.18, 0.06, 0.08);
+    const visor = new THREE.Mesh(visorGeo, redVisorMat);
+    visor.position.set(0, 1.58, 0.11);
+    thugGroup.add(visor);
+
+    // 5. Dual Articulated Arms holding Assault Rifle aimed forward
+    const armGeo = new THREE.CylinderGeometry(0.06, 0.05, 0.55, 8);
+    armGeo.rotateX(Math.PI / 2.3);
+
+    const leftArm = new THREE.Mesh(armGeo, armorVestMat);
+    leftArm.position.set(-0.22, 1.25, 0.22);
+    leftArm.rotation.y = 0.35;
+    thugGroup.add(leftArm);
+
+    const rightArm = new THREE.Mesh(armGeo, armorVestMat);
+    rightArm.position.set(0.22, 1.25, 0.22);
+    rightArm.rotation.y = -0.35;
+    thugGroup.add(rightArm);
+
+    // Tactical Assault Rifle
+    const rifleGroup = new THREE.Group();
+    rifleGroup.name = 'rifle';
+    rifleGroup.position.set(0.08, 1.22, 0.35);
+
+    const receiverGeo = new THREE.BoxGeometry(0.08, 0.12, 0.52);
+    const receiver = new THREE.Mesh(receiverGeo, weaponMat);
+    rifleGroup.add(receiver);
+
+    const barrelGeo = new THREE.CylinderGeometry(0.025, 0.025, 0.45, 8);
+    barrelGeo.rotateX(Math.PI / 2);
+    const barrel = new THREE.Mesh(barrelGeo, weaponMat);
+    barrel.position.set(0, 0.02, 0.42);
+    rifleGroup.add(barrel);
+
+    // Curved Magazine
+    const magGeo = new THREE.BoxGeometry(0.05, 0.18, 0.1);
+    const mag = new THREE.Mesh(magGeo, combatBootMat);
+    mag.position.set(0, -0.12, 0.08);
+    mag.rotation.x = -0.2;
+    rifleGroup.add(mag);
+
+    // Red Laser Targeting Sight Line
+    const laserSightGeo = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(0, 0.02, 0.65),
+      new THREE.Vector3(0, 0.02, 16.0),
+    ]);
+    const laserSightMat = new THREE.LineBasicMaterial({
+      color: 0xef4444,
+      transparent: true,
+      opacity: 0.75,
+    });
+    const laserSight = new THREE.Line(laserSightGeo, laserSightMat);
+    laserSight.name = 'laserSight';
+    rifleGroup.add(laserSight);
+
+    // Muzzle Flash Flare
+    const flashGeo = new THREE.SphereGeometry(0.16, 6, 6);
+    const flashMat = new THREE.MeshBasicMaterial({
+      color: 0xffaa00,
+      transparent: true,
+      opacity: 0.0,
+      blending: THREE.AdditiveBlending,
+    });
+    const muzzleFlash = new THREE.Mesh(flashGeo, flashMat);
+    muzzleFlash.position.set(0, 0.02, 0.68);
+    muzzleFlash.name = 'muzzleFlash';
+    rifleGroup.add(muzzleFlash);
+
+    thugGroup.add(rifleGroup);
+
+    return thugGroup;
   }
 
-  public switchMission(index: number) {
-    if (index >= 0 && index < this.missions.length) {
-      this.activeMissionIndex = index;
-      this.missions.forEach((m, idx) => {
-        m.active = idx === index;
-      });
-      this.spawnMissionEntities(this.missions[index]);
-      audioService.playPoliceDispatch();
-    }
+  /**
+   * Builds an optimized, high-tech LexCorp aerial combat drone (1.6m wide)
+   */
+  private createDroneMesh(): THREE.Group {
+    const droneGroup = new THREE.Group();
+
+    // Central chassis
+    const coreGeo = new THREE.SphereGeometry(0.48, 12, 12);
+    const coreMat = new THREE.MeshStandardMaterial({
+      color: 0x0f172a,
+      metalness: 0.95,
+      roughness: 0.2,
+      emissive: 0x06b6d4,
+      emissiveIntensity: 0.7,
+    });
+    const core = new THREE.Mesh(coreGeo, coreMat);
+    droneGroup.add(core);
+
+    // Quad rotor arms & carbon fiber shrouds
+    const armGeo = new THREE.CylinderGeometry(0.04, 0.04, 1.4, 8);
+    armGeo.rotateZ(Math.PI / 2);
+    const armMat = new THREE.MeshStandardMaterial({ color: 0x334155, metalness: 0.8 });
+    const arm1 = new THREE.Mesh(armGeo, armMat);
+    arm1.rotation.y = Math.PI / 4;
+    droneGroup.add(arm1);
+    const arm2 = new THREE.Mesh(armGeo, armMat);
+    arm2.rotation.y = -Math.PI / 4;
+    droneGroup.add(arm2);
+
+    // Spinning rotor discs
+    const rotorGeo = new THREE.CylinderGeometry(0.38, 0.38, 0.02, 12);
+    const rotorMat = new THREE.MeshBasicMaterial({
+      color: 0x38bdf8,
+      transparent: true,
+      opacity: 0.75,
+      wireframe: true,
+    });
+
+    const rotorPositions = [
+      [-0.6, 0.12, -0.6],
+      [0.6, 0.12, -0.6],
+      [-0.6, 0.12, 0.6],
+      [0.6, 0.12, 0.6],
+    ];
+
+    rotorPositions.forEach((pos) => {
+      const rotor = new THREE.Mesh(rotorGeo, rotorMat);
+      rotor.position.set(pos[0], pos[1], pos[2]);
+      rotor.name = 'rotor';
+      droneGroup.add(rotor);
+    });
+
+    // Red targeting searchlight
+    const lightConeGeo = new THREE.ConeGeometry(0.8, 8, 8, 1, true);
+    lightConeGeo.rotateX(Math.PI);
+    lightConeGeo.translate(0, -4, 0);
+    const lightConeMat = new THREE.MeshBasicMaterial({
+      color: 0xef4444,
+      transparent: true,
+      opacity: 0.25,
+      side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    const searchlight = new THREE.Mesh(lightConeGeo, lightConeMat);
+    droneGroup.add(searchlight);
+
+    return droneGroup;
   }
 
   private spawnMissionEntities(mission: Mission) {
-    // Clear old enemies & ice statues
-    this.enemies = [];
+    // Clear old mission meshes
     this.enemyMeshes.forEach((mesh) => {
       this.missionGroup.remove(mesh);
     });
     this.enemyMeshes.clear();
+    this.enemies = [];
 
-    this.frozenIceMeshes.forEach((iceMesh) => {
-      this.missionGroup.remove(iceMesh);
+    this.frozenIceMeshes.forEach((ice) => {
+      this.missionGroup.remove(ice);
     });
     this.frozenIceMeshes.clear();
 
@@ -247,54 +455,57 @@ export class CrimeManager {
     }
 
     if (mission.type === 'bank-heist') {
+      // Spawn Armored Getaway Van near the Bank Steps
+      const vanGroup = new THREE.Group();
+      const vanChassisGeo = new THREE.BoxGeometry(2.6, 1.8, 5.4);
+      const vanMat = new THREE.MeshStandardMaterial({ color: 0x111827, metalness: 0.6, roughness: 0.4 });
+      const vanChassis = new THREE.Mesh(vanChassisGeo, vanMat);
+      vanChassis.position.y = 1.0;
+      vanChassis.castShadow = true;
+      vanGroup.add(vanChassis);
+
+      // Warning red siren on top
+      const sirenGeo = new THREE.CylinderGeometry(0.12, 0.12, 0.1, 8);
+      const sirenMat = new THREE.MeshBasicMaterial({ color: 0xef4444 });
+      const siren = new THREE.Mesh(sirenGeo, sirenMat);
+      siren.position.set(0, 1.95, 0);
+      vanGroup.add(siren);
+
+      vanGroup.position.set(mission.x - 12, 0, mission.z + 4);
+      vanGroup.rotation.y = 0.4;
+      this.missionGroup.add(vanGroup);
+
+      // Spawn 4 Armored Thugs surrounding the vault entrance (strictly grounded at y = 0.0)
       for (let i = 0; i < 4; i++) {
         const id = `thug_${i}`;
         const offsetAngle = (i / 4) * Math.PI * 2;
-        const ex = mission.x + Math.cos(offsetAngle) * 8;
-        const ez = mission.z + Math.sin(offsetAngle) * 8;
+        const ex = mission.x + Math.cos(offsetAngle) * 7;
+        const ez = mission.z + Math.sin(offsetAngle) * 7;
 
         this.enemies.push({
           id,
           type: 'thug',
           x: ex,
-          y: 1.5,
+          y: 0.0,
           z: ez,
           health: 100,
           maxHealth: 100,
           active: true,
         });
 
-        // 3D thug mesh (armed robber)
-        const thugGroup = new THREE.Group();
-        const bodyGeo = new THREE.CylinderGeometry(0.5, 0.4, 2, 8);
-        const bodyMat = new THREE.MeshStandardMaterial({ color: 0x334155 });
-        const body = new THREE.Mesh(bodyGeo, bodyMat);
-        body.position.y = 1;
-        thugGroup.add(body);
+        const thugMesh = this.createThugMesh();
+        thugMesh.position.set(ex, 0, ez);
+        thugMesh.rotation.y = offsetAngle + Math.PI;
 
-        const headGeo = new THREE.SphereGeometry(0.35, 8, 8);
-        const headMat = new THREE.MeshStandardMaterial({ color: 0x1e293b });
-        const head = new THREE.Mesh(headGeo, headMat);
-        head.position.y = 2.3;
-        thugGroup.add(head);
-
-        // Gun
-        const gunGeo = new THREE.BoxGeometry(0.2, 0.2, 0.8);
-        const gunMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, metalness: 0.9 });
-        const gun = new THREE.Mesh(gunGeo, gunMat);
-        gun.position.set(0.5, 1.4, 0.5);
-        thugGroup.add(gun);
-
-        thugGroup.position.set(ex, 0, ez);
-        this.missionGroup.add(thugGroup);
-        this.enemyMeshes.set(id, thugGroup);
+        this.missionGroup.add(thugMesh);
+        this.enemyMeshes.set(id, thugMesh);
       }
     } else if (mission.type === 'skyscraper-fire') {
       for (let i = 0; i < 5; i++) {
         const id = `fire_${i}`;
-        const fx = mission.x + (Math.random() - 0.5) * 20;
-        const fy = mission.y + (Math.random() - 0.5) * 15;
-        const fz = mission.z + (Math.random() - 0.5) * 20;
+        const fx = mission.x + (Math.random() - 0.5) * 22;
+        const fy = mission.y + (Math.random() - 0.5) * 16;
+        const fz = mission.z + (Math.random() - 0.5) * 22;
 
         this.enemies.push({
           id,
@@ -307,13 +518,24 @@ export class CrimeManager {
           active: true,
         });
 
-        // Fire particle pillar
+        // Multi-tiered animated volumetric fire pillar
         const fireGroup = new THREE.Group();
-        const fireGeo = new THREE.ConeGeometry(2.5, 6, 8);
-        const fireMat = new THREE.MeshBasicMaterial({ color: 0xf97316 });
-        const fireCone = new THREE.Mesh(fireGeo, fireMat);
-        fireCone.position.y = 3;
-        fireGroup.add(fireCone);
+        const coreFireGeo = new THREE.ConeGeometry(2.0, 5.5, 8);
+        const coreFireMat = new THREE.MeshBasicMaterial({ color: 0xfef08a });
+        const coreCone = new THREE.Mesh(coreFireGeo, coreFireMat);
+        coreCone.position.y = 2.75;
+        fireGroup.add(coreCone);
+
+        const outerFireGeo = new THREE.ConeGeometry(3.2, 7.5, 8);
+        const outerFireMat = new THREE.MeshBasicMaterial({
+          color: 0xf97316,
+          transparent: true,
+          opacity: 0.75,
+          blending: THREE.AdditiveBlending,
+        });
+        const outerCone = new THREE.Mesh(outerFireGeo, outerFireMat);
+        outerCone.position.y = 3.5;
+        fireGroup.add(outerCone);
 
         fireGroup.position.set(fx, fy, fz);
         this.missionGroup.add(fireGroup);
@@ -338,31 +560,10 @@ export class CrimeManager {
           speed: 18,
         });
 
-        // Sci-fi drone mesh
-        const droneGroup = new THREE.Group();
-        const coreGeo = new THREE.SphereGeometry(1.4, 12, 12);
-        const coreMat = new THREE.MeshStandardMaterial({
-          color: 0x0f172a,
-          metalness: 0.9,
-          emissive: 0x06b6d4,
-          emissiveIntensity: 0.6,
-        });
-        const core = new THREE.Mesh(coreGeo, coreMat);
-        droneGroup.add(core);
-
-        // Quad rotors
-        const rotorGeo = new THREE.CylinderGeometry(1.2, 1.2, 0.1, 8);
-        const rotorMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8, wireframe: true });
-        const r1 = new THREE.Mesh(rotorGeo, rotorMat);
-        r1.position.set(-2, 0.4, 0);
-        droneGroup.add(r1);
-        const r2 = new THREE.Mesh(rotorGeo, rotorMat);
-        r2.position.set(2, 0.4, 0);
-        droneGroup.add(r2);
-
-        droneGroup.position.set(dx, mission.y, dz);
-        this.missionGroup.add(droneGroup);
-        this.enemyMeshes.set(id, droneGroup);
+        const droneMesh = this.createDroneMesh();
+        droneMesh.position.set(dx, mission.y, dz);
+        this.missionGroup.add(droneMesh);
+        this.enemyMeshes.set(id, droneMesh);
       }
     } else if (mission.type === 'car-chase') {
       const id = 'getaway_car_1';
@@ -370,7 +571,7 @@ export class CrimeManager {
         id,
         type: 'getaway-car',
         x: mission.x,
-        y: 1.5,
+        y: 0.8,
         z: mission.z,
         health: 100,
         maxHealth: 100,
@@ -379,11 +580,28 @@ export class CrimeManager {
       });
 
       const carGroup = new THREE.Group();
-      const bodyGeo = new THREE.BoxGeometry(3.0, 1.6, 6.2);
-      const bodyMat = new THREE.MeshStandardMaterial({ color: 0x111827, metalness: 0.8, roughness: 0.2 });
+      const bodyGeo = new THREE.BoxGeometry(2.4, 1.4, 5.0);
+      const bodyMat = new THREE.MeshStandardMaterial({
+        color: 0x09090b,
+        metalness: 0.85,
+        roughness: 0.25,
+      });
       const body = new THREE.Mesh(bodyGeo, bodyMat);
-      body.position.y = 1;
+      body.position.y = 0.85;
+      body.castShadow = true;
       carGroup.add(body);
+
+      // Flashing underglow
+      const underglowGeo = new THREE.PlaneGeometry(2.2, 4.6);
+      underglowGeo.rotateX(-Math.PI / 2);
+      const underglowMat = new THREE.MeshBasicMaterial({
+        color: 0xa855f7,
+        transparent: true,
+        opacity: 0.65,
+      });
+      const underglow = new THREE.Mesh(underglowGeo, underglowMat);
+      underglow.position.y = 0.15;
+      carGroup.add(underglow);
 
       carGroup.position.set(mission.x, 0, mission.z);
       this.missionGroup.add(carGroup);
@@ -396,16 +614,22 @@ export class CrimeManager {
     enemy.frozen = true;
     enemy.speed = 0;
 
-    // Encase the enemy in a crystalline faceted ice statue
     let iceGeo: THREE.BufferGeometry;
+    let yOffset = 0.95;
+
     if (enemy.type === 'getaway-car') {
-      iceGeo = new THREE.BoxGeometry(3.6, 2.2, 7.0);
+      iceGeo = new THREE.BoxGeometry(3.0, 1.8, 5.6);
+      yOffset = 0.9;
     } else if (enemy.type === 'drone') {
-      iceGeo = new THREE.DodecahedronGeometry(2.2);
+      iceGeo = new THREE.DodecahedronGeometry(1.6);
+      yOffset = 0;
     } else if (enemy.type === 'fire') {
-      iceGeo = new THREE.ConeGeometry(3.2, 7, 8);
+      iceGeo = new THREE.ConeGeometry(3.0, 7.5, 8);
+      yOffset = 3.5;
     } else {
-      iceGeo = new THREE.BoxGeometry(1.6, 2.8, 1.6);
+      // Humanoid Thug Statue (1.82m)
+      iceGeo = new THREE.BoxGeometry(0.85, 1.85, 0.85);
+      yOffset = 0.92;
     }
 
     const iceMat = new THREE.MeshStandardMaterial({
@@ -413,22 +637,21 @@ export class CrimeManager {
       roughness: 0.1,
       metalness: 0.25,
       transparent: true,
-      opacity: 0.82,
+      opacity: 0.85,
       emissive: 0x38bdf8,
       emissiveIntensity: 0.35,
     });
 
     const iceMesh = new THREE.Mesh(iceGeo, iceMat);
-    const yOffset = enemy.type === 'fire' ? 3 : enemy.type === 'getaway-car' ? 1.0 : 1.35;
     iceMesh.position.set(enemy.x, enemy.y + yOffset, enemy.z);
 
     // Decorative ice crystals / frosted spikes on the statue
-    const spikeGeo = new THREE.ConeGeometry(0.35, 1.2, 5);
+    const spikeGeo = new THREE.ConeGeometry(0.24, 0.85, 5);
     const spikeMat = new THREE.MeshBasicMaterial({ color: 0xe0f2fe, transparent: true, opacity: 0.9 });
     for (let s = 0; s < 4; s++) {
       const spike = new THREE.Mesh(spikeGeo, spikeMat);
       const angle = (s / 4) * Math.PI * 2;
-      spike.position.set(Math.cos(angle) * 0.7, 1.2, Math.sin(angle) * 0.7);
+      spike.position.set(Math.cos(angle) * 0.45, 0.5, Math.sin(angle) * 0.45);
       spike.rotation.z = (Math.random() - 0.5) * 0.5;
       iceMesh.add(spike);
     }
@@ -444,11 +667,10 @@ export class CrimeManager {
       this.frozenIceMeshes.delete(enemy.id);
     }
 
-    // Play crisp crystalline ice shattering audio
     audioService.playIceShatter();
 
-    // Spawn 18 breakable physics ice crystal fragments that blast in all directions!
-    const shardGeo = new THREE.TetrahedronGeometry(0.42);
+    // 20 exploding crystalline ice shards
+    const shardGeo = new THREE.TetrahedronGeometry(0.35);
     const shardMat = new THREE.MeshStandardMaterial({
       color: 0xbae6fd,
       roughness: 0.12,
@@ -460,18 +682,19 @@ export class CrimeManager {
     });
 
     const shardCount = 20;
-    const originY = enemy.y + 1.2;
+    const originY = enemy.y + (enemy.type === 'fire' ? 3.5 : 1.0);
+
     for (let k = 0; k < shardCount; k++) {
       const shard = new THREE.Mesh(shardGeo, shardMat);
       shard.position.set(
-        enemy.x + (Math.random() - 0.5) * 1.0,
-        originY + (Math.random() - 0.5) * 1.0,
-        enemy.z + (Math.random() - 0.5) * 1.0
+        enemy.x + (Math.random() - 0.5) * 0.8,
+        originY + (Math.random() - 0.5) * 0.8,
+        enemy.z + (Math.random() - 0.5) * 0.8
       );
-      shard.scale.setScalar(0.6 + Math.random() * 0.8);
+      shard.scale.setScalar(0.6 + Math.random() * 0.7);
       this.shardsGroup.add(shard);
 
-      const blastSpeed = 16 + Math.random() * 24 + comboStep * 8;
+      const blastSpeed = 16 + Math.random() * 22 + comboStep * 8;
       const phi = Math.random() * Math.PI * 2;
       const theta = (Math.random() - 0.2) * Math.PI;
 
@@ -487,7 +710,6 @@ export class CrimeManager {
       });
     }
 
-    // Defeat enemy instantly
     enemy.health = 0;
     enemy.active = false;
     if (mesh) {
@@ -509,6 +731,95 @@ export class CrimeManager {
     return false;
   }
 
+  /**
+   * Fires a realistic tracer bullet from thug's rifle toward Superman
+   */
+  private fireThugBurst(enemy: EnemyEntity, mesh: THREE.Group, playerX: number, playerY: number, playerZ: number) {
+    audioService.playGunfire();
+
+    // Trigger rifle muzzle flash
+    const rifle = mesh.getObjectByName('rifle');
+    if (rifle) {
+      const flash = rifle.getObjectByName('muzzleFlash') as THREE.Mesh;
+      if (flash && flash.material) {
+        (flash.material as THREE.MeshBasicMaterial).opacity = 1.0;
+        this.thugMuzzleFlashTimers.set(enemy.id, 0.08);
+      }
+    }
+
+    // Origin of bullet: rifle barrel tip (~1.25m height)
+    const originX = enemy.x;
+    const originY = enemy.y + 1.25;
+    const originZ = enemy.z;
+
+    // Vector toward Superman's chest
+    const targetY = Math.max(0.8, playerY + 1.2);
+    const dir = new THREE.Vector3(playerX - originX, targetY - originY, playerZ - originZ).normalize();
+
+    // Golden bullet tracer geometry
+    const tracerGeo = new THREE.CylinderGeometry(0.03, 0.03, 0.85, 6);
+    tracerGeo.rotateX(Math.PI / 2);
+    const tracerMat = new THREE.MeshBasicMaterial({
+      color: 0xfacc15,
+      transparent: true,
+      opacity: 0.95,
+      blending: THREE.AdditiveBlending,
+    });
+    const tracerMesh = new THREE.Mesh(tracerGeo, tracerMat);
+    tracerMesh.position.set(originX, originY, originZ);
+    tracerMesh.lookAt(playerX, targetY, playerZ);
+    this.combatVfxGroup.add(tracerMesh);
+
+    const bulletSpeed = 160.0; // Fast realistic bullet speed
+
+    this.bulletTracers.push({
+      mesh: tracerMesh,
+      vx: dir.x * bulletSpeed,
+      vy: dir.y * bulletSpeed,
+      vz: dir.z * bulletSpeed,
+      life: 0.65,
+      maxLife: 0.65,
+    });
+  }
+
+  /**
+   * Spawns iconic golden/blue bullet deflection sparks bursting off Superman's chest
+   */
+  private spawnBulletDeflection(x: number, y: number, z: number) {
+    const now = performance.now();
+    if (now - this.lastRicochetSoundTime > 120) {
+      this.lastRicochetSoundTime = now;
+      audioService.playBulletRicochet();
+    }
+
+    const sparkGeo = new THREE.SphereGeometry(0.06, 4, 4);
+    const sparkMat = new THREE.MeshBasicMaterial({
+      color: Math.random() > 0.4 ? 0xfef08a : 0x38bdf8,
+      transparent: true,
+      opacity: 1.0,
+      blending: THREE.AdditiveBlending,
+    });
+
+    for (let i = 0; i < 7; i++) {
+      const sparkMesh = new THREE.Mesh(sparkGeo, sparkMat);
+      sparkMesh.position.set(x, y, z);
+      this.combatVfxGroup.add(sparkMesh);
+
+      const speed = 14 + Math.random() * 20;
+      const angle = Math.random() * Math.PI * 2;
+      const vElev = (Math.random() - 0.2) * 12;
+
+      this.deflectionSparks.push({
+        mesh: sparkMesh,
+        vx: Math.cos(angle) * speed,
+        vy: vElev + 4,
+        vz: Math.sin(angle) * speed,
+        life: 0.25,
+        maxLife: 0.25,
+      });
+    }
+  }
+
   public update(
     delta: number,
     playerX: number,
@@ -527,40 +838,95 @@ export class CrimeManager {
       this.beaconMesh.rotation.y += delta * 1.5;
     }
 
-    // Animate enemies & check damage from Superman
+    // Animate enemies & update combat AI
     this.enemies.forEach((enemy) => {
       if (!enemy.active) return;
       const mesh = this.enemyMeshes.get(enemy.id);
       if (!mesh) return;
 
-      // Distance to Superman
       const dist = Math.hypot(enemy.x - playerX, enemy.y - playerY, enemy.z - playerZ);
 
-      // Behavior updates (only if NOT frozen into an ice statue)
+      // --- 1. DYNAMIC ENEMY COMBAT BEHAVIORS ---
       if (!enemy.frozen) {
-        if (enemy.type === 'drone') {
+        if (enemy.type === 'thug') {
+          // Thug Combat AI: Face Superman & Shoot when in range!
+          if (dist < 65) {
+            // Turn smoothly to aim at Superman
+            const targetAngle = Math.atan2(playerX - enemy.x, playerZ - enemy.z);
+            mesh.rotation.y = THREE.MathUtils.lerp(mesh.rotation.y, targetAngle, delta * 8);
+
+            // Shoot rifle bursts
+            let shootTimer = (this.thugShootTimers.get(enemy.id) || (0.8 + Math.random() * 1.5)) - delta;
+            if (shootTimer <= 0) {
+              shootTimer = 1.2 + Math.random() * 1.2;
+              this.fireThugBurst(enemy, mesh, playerX, playerY, playerZ);
+            }
+            this.thugShootTimers.set(enemy.id, shootTimer);
+          } else {
+            // Idle scanning guard patrol
+            mesh.rotation.y += Math.sin(Date.now() * 0.002 + parseInt(enemy.id.split('_')[1] || '0')) * 0.008;
+          }
+
+          // Muzzle flash timer fadeout
+          const flashTime = this.thugMuzzleFlashTimers.get(enemy.id) || 0;
+          if (flashTime > 0) {
+            const nextFlash = flashTime - delta;
+            this.thugMuzzleFlashTimers.set(enemy.id, nextFlash);
+            if (nextFlash <= 0) {
+              const rifle = mesh.getObjectByName('rifle');
+              if (rifle) {
+                const flash = rifle.getObjectByName('muzzleFlash') as THREE.Mesh;
+                if (flash && flash.material) {
+                  (flash.material as THREE.MeshBasicMaterial).opacity = 0.0;
+                }
+              }
+            }
+          }
+        } else if (enemy.type === 'drone') {
           const time = Date.now() * 0.001;
           enemy.x = mission.x + Math.cos(time + parseInt(enemy.id.split('_')[1] || '0') * 2) * 35;
           enemy.z = mission.z + Math.sin(time + parseInt(enemy.id.split('_')[1] || '0') * 2) * 35;
           mesh.position.set(enemy.x, enemy.y, enemy.z);
-          mesh.rotation.y += delta * 3;
+
+          // Spin rotor discs
+          mesh.traverse((child) => {
+            if (child.name === 'rotor') {
+              child.rotation.y += delta * 24;
+            }
+          });
+
+          // Aim and pulse plasma when player is near
+          if (dist < 75) {
+            mesh.lookAt(playerX, playerY, playerZ);
+            let dTimer = (this.droneShootTimers.get(enemy.id) || 1.5) - delta;
+            if (dTimer <= 0) {
+              dTimer = 2.2 + Math.random();
+              audioService.playDroneLaser();
+            }
+            this.droneShootTimers.set(enemy.id, dTimer);
+          }
         } else if (enemy.type === 'getaway-car') {
           enemy.z -= (enemy.speed || 30) * delta;
           if (enemy.z < -300) enemy.z = 300;
           mesh.position.set(enemy.x, enemy.y, enemy.z);
         } else if (enemy.type === 'fire') {
-          // Flickering fire
-          mesh.scale.y = 1.0 + Math.sin(Date.now() * 0.01 + enemy.x) * 0.3;
+          // Volumetric flame pulsing
+          mesh.scale.y = 1.0 + Math.sin(Date.now() * 0.012 + enemy.x) * 0.3;
+          mesh.scale.x = 1.0 + Math.cos(Date.now() * 0.01 + enemy.z) * 0.15;
         }
       }
 
-      // Check hit from Heat Vision (beam hits when within 90m and roughly in front)
+      // --- 2. SUPERMAN POWER IMPACTS ---
+      // Heat Vision Hit
       if (isFiringHeat && dist < 90) {
-        enemy.health -= delta * 140;
-        if (mesh.children[0] && (mesh.children[0] as THREE.Mesh).material) {
-          ((mesh.children[0] as THREE.Mesh).material as THREE.MeshStandardMaterial).color?.setHex(0xffffff);
-        }
-        // Heat melts ice if frozen
+        enemy.health -= delta * 150;
+        // Thermal glow feedback
+        mesh.traverse((child) => {
+          if ((child as THREE.Mesh).isMesh && (child as THREE.Mesh).material) {
+            const m = (child as THREE.Mesh).material as THREE.MeshStandardMaterial;
+            if (m.color) m.color.setHex(0xffffff);
+          }
+        });
         if (enemy.frozen) {
           const iceMesh = this.frozenIceMeshes.get(enemy.id);
           if (iceMesh) {
@@ -571,24 +937,22 @@ export class CrimeManager {
         }
       }
 
-      // Check hit from Freeze Breath (dense blizzard cone within 32m)
+      // Freeze Breath Hit
       if (isFiringFreeze && dist < 32) {
         enemy.health -= delta * 90;
         enemy.freezeProgress = (enemy.freezeProgress || 0) + delta * 160;
 
-        // When sub-zero threshold is reached: Freeze into solid ice statue!
         if (enemy.freezeProgress >= 70 && !enemy.frozen) {
           this.freezeEnemy(enemy, mesh);
         }
       }
 
-      // Check defeat (via heat or direct extinction)
+      // Check defeat
       if (enemy.health <= 0 && enemy.active) {
         enemy.active = false;
         mission.progress += 1;
         progressGained += 1;
 
-        // Clean up meshes
         this.missionGroup.remove(mesh);
         this.enemyMeshes.delete(enemy.id);
         const iceMesh = this.frozenIceMeshes.get(enemy.id);
@@ -609,11 +973,59 @@ export class CrimeManager {
       }
     });
 
-    // Update urban props physics (gravity, bouncing, friction)
+    // --- 3. BULLET TRACERS & RICOCHET DEFLECTION PHYSICS ---
+    const playerChestPos = new THREE.Vector3(playerX, playerY + 1.2, playerZ);
+
+    for (let b = this.bulletTracers.length - 1; b >= 0; b--) {
+      const bullet = this.bulletTracers[b];
+      bullet.life -= delta;
+
+      bullet.mesh.position.x += bullet.vx * delta;
+      bullet.mesh.position.y += bullet.vy * delta;
+      bullet.mesh.position.z += bullet.vz * delta;
+
+      // Check deflection proximity to Superman's chest
+      const dToPlayer = bullet.mesh.position.distanceTo(playerChestPos);
+      if (dToPlayer < 1.6) {
+        // PING! Bullets ricochet off Superman's indestructible chest!
+        this.spawnBulletDeflection(playerX, playerY + 1.2, playerZ);
+        this.combatVfxGroup.remove(bullet.mesh);
+        this.bulletTracers.splice(b, 1);
+        continue;
+      }
+
+      // Expired bullets
+      if (bullet.life <= 0 || bullet.mesh.position.y <= 0) {
+        this.combatVfxGroup.remove(bullet.mesh);
+        this.bulletTracers.splice(b, 1);
+      }
+    }
+
+    // --- 4. RICOCHET SPARK PARTICLES UPDATE ---
+    for (let s = this.deflectionSparks.length - 1; s >= 0; s--) {
+      const spark = this.deflectionSparks[s];
+      spark.life -= delta;
+
+      if (spark.life <= 0) {
+        this.combatVfxGroup.remove(spark.mesh);
+        this.deflectionSparks.splice(s, 1);
+        continue;
+      }
+
+      spark.vy -= 28 * delta; // Gravity
+      spark.mesh.position.x += spark.vx * delta;
+      spark.mesh.position.y += spark.vy * delta;
+      spark.mesh.position.z += spark.vz * delta;
+
+      const scale = spark.life / spark.maxLife;
+      spark.mesh.scale.setScalar(scale);
+    }
+
+    // Update urban props physics
     for (let i = 0; i < this.urbanProps.length; i++) {
       const prop = this.urbanProps[i];
       if (Math.abs(prop.vx) > 0.05 || Math.abs(prop.vy) > 0.05 || Math.abs(prop.vz) > 0.05) {
-        prop.vy -= 36 * delta; // Gravity
+        prop.vy -= 36 * delta;
         prop.x += prop.vx * delta;
         prop.y += prop.vy * delta;
         prop.z += prop.vz * delta;
@@ -621,7 +1033,6 @@ export class CrimeManager {
         prop.mesh.rotation.x += prop.rotVx * delta;
         prop.mesh.rotation.z += prop.rotVz * delta;
 
-        // Ground collision & bouncing
         if (prop.y <= 0.7) {
           prop.y = 0.7;
           prop.vy = -prop.vy * 0.35;
@@ -636,7 +1047,7 @@ export class CrimeManager {
       }
     }
 
-    // Update breakable ice crystal fragments physics
+    // Update ice crystal fragments physics
     for (let s = this.iceShards.length - 1; s >= 0; s--) {
       const shard = this.iceShards[s];
       shard.life -= delta;
@@ -646,7 +1057,7 @@ export class CrimeManager {
         continue;
       }
 
-      shard.vy -= 32 * delta; // Gravity
+      shard.vy -= 32 * delta;
       shard.mesh.position.x += shard.vx * delta;
       shard.mesh.position.y += shard.vy * delta;
       shard.mesh.position.z += shard.vz * delta;
@@ -654,7 +1065,6 @@ export class CrimeManager {
       shard.mesh.rotation.x += shard.rotVx * delta;
       shard.mesh.rotation.z += shard.rotVz * delta;
 
-      // Ground bounce
       if (shard.mesh.position.y <= 0.3) {
         shard.mesh.position.y = 0.3;
         shard.vy = -shard.vy * 0.4;
@@ -662,7 +1072,6 @@ export class CrimeManager {
         shard.vz *= 0.7;
       }
 
-      // Shrink scale smoothly as life fades
       const scale = Math.max(0.01, shard.life / shard.maxLife);
       shard.mesh.scale.setScalar(scale);
     }
@@ -683,11 +1092,9 @@ export class CrimeManager {
     let missionCompleted = false;
     const mission = this.getActiveMission();
 
-    // Superman forward heading vector (away from camera into scene)
     const dirX = Math.sin(rotY);
     const dirZ = Math.cos(rotY);
 
-    // Punch enemies within cone (reach: 8.0m, vertical delta: 4.8m)
     this.enemies.forEach((enemy) => {
       if (!enemy.active) return;
       const dx = enemy.x - playerX;
@@ -704,8 +1111,6 @@ export class CrimeManager {
           hits++;
           const mesh = this.enemyMeshes.get(enemy.id);
 
-          // BREAKABLE ICE STATUE MECHANIC:
-          // If the enemy is frozen, a punch SHATTERS the statue into exploding ice crystals!
           if (enemy.frozen) {
             iceShattered++;
             const completed = this.shatterIceStatue(enemy, mesh, comboStep);
@@ -723,9 +1128,12 @@ export class CrimeManager {
 
           if (mesh) {
             mesh.position.set(enemy.x, enemy.y, enemy.z);
-            if (mesh.children[0] && (mesh.children[0] as THREE.Mesh).material) {
-              ((mesh.children[0] as THREE.Mesh).material as THREE.MeshStandardMaterial).color?.setHex(0xffffff);
-            }
+            mesh.traverse((child) => {
+              if ((child as THREE.Mesh).isMesh && (child as THREE.Mesh).material) {
+                const m = (child as THREE.Mesh).material as THREE.MeshStandardMaterial;
+                if (m.color) m.color.setHex(0xffffff);
+              }
+            });
           }
 
           if (enemy.health <= 0 && enemy.active) {
@@ -749,7 +1157,7 @@ export class CrimeManager {
       }
     });
 
-    // Punch urban props with massive superhero force impulse!
+    // Punch urban props
     this.urbanProps.forEach((prop) => {
       const dx = prop.x - playerX;
       const dy = prop.y - playerY;
@@ -773,7 +1181,6 @@ export class CrimeManager {
       }
     });
 
-    // Sound feedback
     audioService.playSuperPunch(comboStep);
     if (propsHit > 0) {
       audioService.playHeavyImpact();
@@ -793,7 +1200,14 @@ export class CrimeManager {
         if (enemy.frozen) {
           this.shatterIceStatue(enemy, mesh, 2);
         } else {
-          enemy.health -= 120; // Instantly knock out thugs or extinguish fires on ground
+          enemy.health -= 120;
+          // Blast thugs away from slam center
+          const dx = enemy.x - playerX;
+          const dz = enemy.z - playerZ;
+          const len = Math.hypot(dx, dz) || 1;
+          enemy.x += (dx / len) * 12;
+          enemy.z += (dz / len) * 12;
+          if (mesh) mesh.position.set(enemy.x, enemy.y, enemy.z);
         }
         hits++;
       }
@@ -816,7 +1230,6 @@ export class CrimeManager {
     enemy.health -= damage;
     const mesh = this.enemyMeshes.get(id);
 
-    // Apply knockback
     const dx = enemy.x - origin.x;
     const dz = enemy.z - origin.z;
     const len = Math.hypot(dx, dz) || 1;
@@ -846,5 +1259,27 @@ export class CrimeManager {
       return true;
     }
     return false;
+  }
+
+  public getActiveMission(): Mission {
+    return this.missions[this.activeMissionIndex];
+  }
+
+  public switchMission(index: number) {
+    if (index >= 0 && index < this.missions.length) {
+      this.missions.forEach((m, idx) => {
+        m.active = idx === index;
+      });
+      this.activeMissionIndex = index;
+      this.spawnMissionEntities(this.missions[index]);
+    }
+  }
+
+  public dispose() {
+    this.scene.remove(this.missionGroup);
+    this.scene.remove(this.propsGroup);
+    this.scene.remove(this.shardsGroup);
+    this.scene.remove(this.combatVfxGroup);
+    if (this.beaconMesh) this.scene.remove(this.beaconMesh);
   }
 }

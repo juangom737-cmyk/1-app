@@ -274,12 +274,17 @@ function createEmblemTexture(): THREE.CanvasTexture {
 
 export function createSupermanCharacter(scene: THREE.Scene): SupermanMeshController {
   const rootGroup = new THREE.Group();
-  // 1:1 Realistic Human Scale (approx 1.95 meters height relative to Metropolis architecture)
-  rootGroup.scale.set(0.44, 0.44, 0.44);
+  // Canonical Superhero Scale: exactly 1.95 meters height relative to Metropolis architecture & 1.76m pedestrians
+  rootGroup.scale.set(0.31, 0.31, 0.31);
   scene.add(rootGroup);
 
+  // Character Pivot grounds the bottom of Superman's boots precisely at y = 0.0
+  const characterPivot = new THREE.Group();
+  characterPivot.position.y = 0.75;
+  rootGroup.add(characterPivot);
+
   const characterGroup = new THREE.Group();
-  rootGroup.add(characterGroup);
+  characterPivot.add(characterGroup);
 
   // --- PROCEDURAL PBR TEXTURES ---
   const suitNormalMap = createSuitNormalMap();
@@ -940,7 +945,8 @@ export function createSupermanCharacter(scene: THREE.Scene): SupermanMeshControl
   // 7. VOLUMETRIC HEAT VISION (TWIN PRECISION BEAMS FROM EYE PUPILS)
   // ==========================================================================
   const heatVisionGroup = new THREE.Group();
-  rootGroup.add(heatVisionGroup);
+  headGroup.add(heatVisionGroup);
+  heatVisionGroup.position.set(0, 0.58, 0.46);
 
   const laserLen = 220;
   // White plasma core
@@ -1003,7 +1009,8 @@ export function createSupermanCharacter(scene: THREE.Scene): SupermanMeshControl
   // 8. FREEZE BREATH (VOLUMETRIC BLIZZARD CONE & ICE CRYSTALS FROM LIPS)
   // ==========================================================================
   const freezeGroup = new THREE.Group();
-  rootGroup.add(freezeGroup);
+  headGroup.add(freezeGroup);
+  freezeGroup.position.set(0, 0.32, 0.48);
 
   const frostConeGeo = new THREE.ConeGeometry(5.5, 30, 20, 1, true);
   frostConeGeo.rotateX(-Math.PI / 2);
