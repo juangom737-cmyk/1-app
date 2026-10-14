@@ -463,7 +463,7 @@ export const Metropolis3DScene: React.FC<Metropolis3DSceneProps> = ({
     renderer.setPixelRatio(1);
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.shadowMap.type = THREE.PCFShadowMap;
     container.appendChild(renderer.domElement);
 
     // --- POST-PROCESSING (Bloom for Heat Vision & Motion Blur for Supersonic) ---
