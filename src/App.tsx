@@ -19,7 +19,7 @@ export default function App() {
   const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [isPerfHudOpen, setIsPerfHudOpen] = useState(false);
-  const [graphicProfile, setGraphicProfile] = useState<GraphicQualityProfile>('radeon-optimized');
+  const [graphicProfile, setGraphicProfile] = useState<GraphicQualityProfile>('balanced-30');
   const [timeOfDay, setTimeOfDay] = useState<TimeOfDayMode>('golden-hour');
 
   // Player & World State from 3D Scene

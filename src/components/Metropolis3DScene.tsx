@@ -706,9 +706,13 @@ export const Metropolis3DScene: React.FC<Metropolis3DSceneProps> = ({
 
     // --- MAIN GAME LOOP ---
     let lastTime = performance.now();
+    let lastRenderedTime = lastTime;
 
     const animate = (time: number) => {
       animFrameIdRef.current = requestAnimationFrame(animate);
+      // Keep the default balanced profile responsive on integrated GPUs and hosted previews.
+      if (graphicProfileRef.current === 'balanced-30' && time - lastRenderedTime < 1000 / 30) return;
+      lastRenderedTime = time;
       const rawDtMs = Math.max(1, time - lastTime);
       const delta = Math.min(rawDtMs / 1000, 0.1);
       lastTime = time;

@@ -286,6 +286,13 @@ export class NPCSystem {
 
         pGroup.rotation.y = Math.atan2(dirX, dirZ);
 
+        // Pedestrians are detailed but small; avoid drawing every limb into the city shadow map.
+        pGroup.traverse((child) => {
+          if (child instanceof THREE.Mesh) {
+            child.castShadow = false;
+            child.receiveShadow = false;
+          }
+        });
         this.npcGroup.add(pGroup);
 
         this.npcs.push({

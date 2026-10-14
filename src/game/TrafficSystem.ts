@@ -117,7 +117,7 @@ export class TrafficSystem {
     });
     const chassis = new THREE.Mesh(chassisGeo, chassisMat);
     chassis.position.y = height * 0.3 + 0.3;
-    chassis.castShadow = true;
+    chassis.castShadow = false;
     carGroup.add(chassis);
 
     if (isBus) {
@@ -128,7 +128,7 @@ export class TrafficSystem {
         chassisMat
       );
       rearSection.position.set(0, height * 0.36, -length * 0.49);
-      rearSection.castShadow = true;
+      rearSection.castShadow = false;
       carGroup.add(rearSection);
       const articulation = new THREE.Mesh(
         new THREE.BoxGeometry(width * 0.84, height * 0.62, 1.25),
