@@ -1,35 +1,50 @@
-# Metropolis 3D — Superman Open World Sandbox
+# Bogotá 3D — Guardián de Bogotá
 
-Juego de acción y mundo abierto en 3D construido con **React 19**, **TypeScript**, **Three.js** y física de cuerpos rígidos **Rapier 3D (`@dimforge/rapier3d-compat`)**.
+Una aventura de acción en tercera persona protagonizada por Superman, ambientada en una recreación estilizada y jugable de Bogotá. El mapa combina hitos reconocibles y barrios conectados por un corredor de TransMilenio; no pretende ser cartografía exacta.
 
-## Características Principales
+## La historia: La noche del apagón
 
-- **Vuelo Supersónico y Espacio Exterior**: Despega desde el asfalto de Metrópolis hasta alcanzar velocidades superiores a Mach 5, atravesando la atmósfera hacia el sistema solar (Tierra, Luna, Marte, Saturno y el Sol) donde la radiación solar recarga tu energía al instante.
-- **Combate Aéreo 3D con Lock-On y Air Dash Strike**:
-  - Fija objetivos terrestres o aéreos con **Q / Tab** (con indicador de salud y distancia en tiempo real).
-  - Ejecuta combos de 4 golpes (**Clic Izquierdo**) con desplazamiento aéreo automático (*Air Dash Strike*) hacia el objetivo fijado y remate descendente (*Meteor Slam*).
-- **Física de Destrucción y Lanzamiento de Vehículos (Rapier 3D)**:
-  - Presiona **F** cerca de cualquier vehículo o enemigo para levantarlo sobre tus hombros con previsualización de trayectoria parabólica.
-  - Lánzalo a casi 300 km/h provocando explosiones en área, cráteres, ondas de choque y escombros físicos.
-- **Superpoderes Kriptonianos**:
-  - **Visión Térmica (`R` / `1`)**: Haces gemelos de plasma con postprocesado *Unreal Bloom* dinámico.
-  - **Aliento Gélido (`E` / `2`)**: Vórtice criogénico que extingue incendios y congela enemigos y vehículos en estatuas de hielo destructibles.
-  - **Agarre / Golpe Sísmico (`F` / `3`)**: Levanta vehículos o desata una onda expansiva sísmica.
-  - **Visión de Rayos X (`X` / `4`)**: Escáner estructural a través de los rascacielos de Metrópolis.
-- **6 Emergencias Dinámicas y Radar Estilo GTA**:
-  - Minimapa rotatorio alineado con la dirección de Superman que muestra edificios icónicos (*Daily Planet*, *LexCorp Tower*, *S.T.A.R. Labs*, *Wayne Enterprises*, *Puente Colgante Clinton*), tráfico vehicular, enemigos activos y alertas policiales.
-- **Ciclo Atmosférico y Profiler 60 FPS**:
-  - Alterna en tiempo real entre **Atardecer Dorado**, **Día Solar** y **Noche Cyberpunk** con la tecla **T**.
-  - Cambia entre perfiles gráficos (**Equilibrado Radeon**, **Modo Rendimiento** y **Alta Calidad Ultra**) con **F7** y abre el panel de telemetría 60 FPS (FPS, P95 ms, Draw Calls, Triángulos y cuerpos físicos Rapier) con **F8**.
+La banda ficticia Los Silentes roba un núcleo de energía experimental y desata una cadena de emergencias por la ciudad. Sigue el rastro desde La Candelaria hasta la subestación del centro en seis capítulos: recupera el núcleo, apaga el incendio de la Torre Colpatria, protege el teleférico de Monserrate, intercepta un vehículo en la Caracas y evacúa El Campín antes del enfrentamiento final.
 
-## Ejecución Local
+Cada misión incluye contexto narrativo, ubicación y objetivo. Puedes cambiar de capítulo desde el despacho de misión y abordar los encuentros con tus poderes o combos.
 
-1. Instala las dependencias:
+## Bogotá jugable
+
+- Plaza de Bolívar y el Capitolio Nacional con bandera colombiana animada.
+- Torre Colpatria, Hospital San Ignacio, Estadio El Campín y Aeropuerto El Dorado.
+- Cerros Orientales con Monserrate, Guadalupe y un teleférico visible.
+- Parque Simón Bolívar, río Bogotá y un corredor de TransMilenio con estaciones.
+- Tráfico con taxis amarillos, patrullas, vehículos urbanos y buses articulados rojos.
+- Minimapa con barrios, hitos, Cerros Orientales, corredor de buses y objetivo activo.
+
+## Vuelo y combate
+
+- Vuelo supersónico, ascenso a la atmósfera y recarga de energía solar.
+- Visión térmica, aliento gélido, visión de rayos X y golpe sísmico.
+- Combos aéreos con fijación de objetivos, impactos de remate y destrucción con física Rapier 3D.
+- Tráfico, peatones, reacciones de ciudadanos y cambio entre atardecer, día y noche.
+- Perfiles gráficos intercambiables con F7 y métricas de rendimiento con F8.
+
+## Controles rápidos
+
+- **WASD / flechas:** moverse y girar.
+- **Clic derecho o doble toque de W:** activar vuelo supersónico.
+- **Espacio / Shift:** subir / bajar rápidamente.
+- **Q / Tab:** fijar objetivo; **clic izquierdo:** atacar.
+- **R / 1:** visión térmica; **E / 2:** aliento gélido.
+- **F / 3:** agarrar o lanzar; **X / 4:** rayos X.
+- **T:** cambiar el ciclo de luz; **F7 / F8:** gráficos y métricas.
+
+## Ejecutar localmente
+
+1. Instala Node.js y las dependencias:
    ```bash
    npm install
    ```
-2. Inicia el servidor de desarrollo:
+2. Inicia Vite:
    ```bash
    npm run dev
    ```
-3. Abre `http://localhost:3000` en tu navegador.
+3. Abre la URL local que muestra la terminal.
+
+La clave de Gemini es opcional para esta versión; `.env.example` incluye el nombre de la variable sin ningún secreto.

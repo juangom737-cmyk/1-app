@@ -90,13 +90,15 @@ export class CrimeManager {
       {
         id: 'mission_bank',
         type: 'bank-heist',
-        title: 'Atraco Armado en el Banco Central',
-        locationName: 'Distrito Financiero de Metrópolis',
+        title: 'Señal robada en el Banco de la República',
+        locationName: 'La Candelaria · Plaza de Bolívar',
         x: -80,
         y: 0.0,
         z: -90,
-        description: 'Una célula fuertemente armada está asaltando la cámara de seguridad con tecnología militar experimental.',
-        objectiveText: 'Neutraliza a los asaltantes armados usando Visión Térmica, Aliento Gélido o Combate Kriptoniano.',
+        description:
+          'La banda Los Silentes irrumpió en el Banco de la República para robar un núcleo de energía experimental. Una descarga del núcleo dejó un rastro rumbo al centro.',
+        objectiveText:
+          'Detén a los 4 asaltantes y recupera el núcleo. Puedes usar Visión Térmica, Aliento Gélido o combate cuerpo a cuerpo.',
         progress: 0,
         maxProgress: 4,
         rewardHope: 25,
@@ -107,13 +109,15 @@ export class CrimeManager {
       {
         id: 'mission_fire',
         type: 'skyscraper-fire',
-        title: 'Incendio en la Torre LexCorp',
-        locationName: 'Pisos Superiores de LexCorp Tower',
+        title: 'Apagón en la Torre Colpatria',
+        locationName: 'Centro Internacional · Torre Colpatria',
         x: 120,
         y: 110,
         z: -100,
-        description: 'Una sobrecarga en el reactor de plasma causó un incendio masivo en el piso 42 de LexCorp.',
-        objectiveText: 'Vuela hasta la altitud del fuego y usa tu Aliento Gélido para extinguir las 5 llamaradas.',
+        description:
+          'El núcleo robado sobrecargó el sistema eléctrico de la Torre Colpatria. Hay fuego en varios pisos y los ascensores quedaron detenidos.',
+        objectiveText:
+          'Sube hasta los pisos afectados y apaga las 5 llamaradas con Aliento Gélido (E / 2).',
         progress: 0,
         maxProgress: 5,
         rewardHope: 30,
@@ -124,13 +128,15 @@ export class CrimeManager {
       {
         id: 'mission_drones',
         type: 'lexcorp-drones',
-        title: 'Incursión Aérea sobre el Daily Planet',
-        locationName: 'Cielos de Downtown Metropolis',
-        x: 0,
-        y: 160,
-        z: 0,
-        description: 'Drones de combate no tripulados están amenazando la esfera del Daily Planet y el tráfico aéreo.',
-        objectiveText: 'Intercepta los drones en pleno vuelo y destrúyelos con Visión Térmica o embestidas Mach.',
+        title: 'Drones sobre Monserrate',
+        locationName: 'Santuario de Monserrate · Cerros Orientales',
+        x: 790,
+        y: 250,
+        z: -110,
+        description:
+          'Los Silentes desplegaron drones para cortar el cable aéreo de Monserrate y borrar las grabaciones del santuario. El núcleo está coordinando el enjambre.',
+        objectiveText:
+          'Protege el teleférico y derriba los 3 drones con Q / Tab, Visión Térmica o combos aéreos.',
         progress: 0,
         maxProgress: 3,
         rewardHope: 25,
@@ -141,19 +147,59 @@ export class CrimeManager {
       {
         id: 'mission_chase',
         type: 'car-chase',
-        title: 'Persecución de Vehículo Blindado',
-        locationName: 'Gran Avenida Centenario',
-        x: 0,
+        title: 'Persecución por la Caracas',
+        locationName: 'Carrera 10 · Corredor TransMilenio',
+        x: 90,
         y: 0.8,
-        z: 80,
-        description: 'Un todoterreno blindado de escape huye a gran velocidad evadiendo los bloqueos policiales.',
-        objectiveText: 'Usa vuelo supersónico para interceptar el vehículo y congélalo con Aliento Gélido o arrójalo.',
+        z: 130,
+        description:
+          'Un vehículo blindado de Los Silentes escapa con un segundo módulo del núcleo. La Policía cerró la Caracas, pero el conductor intenta abrirse paso entre los buses.',
+        objectiveText:
+          'Controla la persecución entre el tráfico: congela el blindado con Aliento Gélido o sujétalo con F.',
         progress: 0,
         maxProgress: 1,
         rewardHope: 35,
         completed: false,
         active: false,
         iconColor: '#a855f7',
+      },
+      {
+        id: 'mission_star_labs',
+        type: 'star-labs-breach',
+        title: 'El Campín bajo asedio',
+        locationName: 'Estadio Nemesio Camacho El Campín · Teusaquillo',
+        x: 260,
+        y: 80,
+        z: -390,
+        description:
+          'El enjambre tomó el control de las pantallas y luces del estadio durante un partido. Miles de personas buscan una salida mientras los drones bloquean las rampas.',
+        objectiveText:
+          'Abre una ruta segura para evacuar y neutraliza los 4 drones sobre el estadio.',
+        progress: 0,
+        maxProgress: 4,
+        rewardHope: 30,
+        completed: false,
+        active: false,
+        iconColor: '#38bdf8',
+      },
+      {
+        id: 'mission_bridge',
+        type: 'bridge-collapse',
+        title: 'Último pulso en la subestación',
+        locationName: 'Red eléctrica del centro · Bogotá',
+        x: 360,
+        y: 0,
+        z: 540,
+        description:
+          'La líder de Los Silentes activó el núcleo en la subestación. Si completa la descarga, el apagón cubrirá toda Bogotá. La Policía necesita unos segundos para restablecer la red.',
+        objectiveText:
+          'Detén a los 4 atacantes y protege la subestación hasta que vuelva la energía.',
+        progress: 0,
+        maxProgress: 4,
+        rewardHope: 35,
+        completed: false,
+        active: false,
+        iconColor: '#eab308',
       },
     ];
   }
@@ -174,7 +220,7 @@ export class CrimeManager {
   }
 
   private initUrbanProps() {
-    // Street dumpsters, newspaper stands, mailboxes, and phone booths
+    // Street dumpsters, newspaper stands, mailboxes, and crates
     const propConfigs = [
       { type: 'dumpster', count: 14, color: 0x15803d, w: 2.2, h: 1.5, d: 1.4 },
       { type: 'stand', count: 18, color: 0x0284c7, w: 1.4, h: 2.2, d: 1.2 },
@@ -223,8 +269,6 @@ export class CrimeManager {
 
   /**
    * Builds an anatomically realistic humanoid mercenary / bank robber (1.82m height)
-   * Grounded with boots touching pavement at y = 0.0, tactical vest, balaclava with red visor,
-   * assault rifle with red laser sight and muzzle flash.
    */
   private createThugMesh(): THREE.Group {
     const thugGroup = new THREE.Group();
@@ -362,11 +406,19 @@ export class CrimeManager {
 
     thugGroup.add(rifleGroup);
 
+    // Store base colors for hit flash restoration
+    thugGroup.traverse((child) => {
+      if ((child as THREE.Mesh).isMesh && (child as THREE.Mesh).material) {
+        const m = (child as THREE.Mesh).material as THREE.MeshStandardMaterial;
+        if (m.color) child.userData.baseColorHex = m.color.getHex();
+      }
+    });
+
     return thugGroup;
   }
 
   /**
-   * Builds an optimized, high-tech LexCorp aerial combat drone (1.6m wide)
+   * Builds an optimized, high-tech Los Silentes aerial combat drone (1.6m wide)
    */
   private createDroneMesh(): THREE.Group {
     const droneGroup = new THREE.Group();
@@ -432,21 +484,26 @@ export class CrimeManager {
     const searchlight = new THREE.Mesh(lightConeGeo, lightConeMat);
     droneGroup.add(searchlight);
 
+    droneGroup.traverse((child) => {
+      if ((child as THREE.Mesh).isMesh && (child as THREE.Mesh).material) {
+        const m = (child as THREE.Mesh).material as THREE.MeshStandardMaterial;
+        if (m.color) child.userData.baseColorHex = m.color.getHex();
+      }
+    });
+
     return droneGroup;
   }
 
   private spawnMissionEntities(mission: Mission) {
     // Clear old mission meshes
-    this.enemyMeshes.forEach((mesh) => {
-      this.missionGroup.remove(mesh);
-    });
+    this.missionGroup.clear();
     this.enemyMeshes.clear();
     this.enemies = [];
-
-    this.frozenIceMeshes.forEach((ice) => {
-      this.missionGroup.remove(ice);
-    });
     this.frozenIceMeshes.clear();
+
+    // Reset mission progress if replaying a completed mission
+    mission.progress = 0;
+    mission.completed = false;
 
     // Position beacon
     if (this.beaconMesh) {
@@ -454,8 +511,9 @@ export class CrimeManager {
       (this.beaconMesh.material as THREE.MeshBasicMaterial).color.set(mission.iconColor);
     }
 
-    if (mission.type === 'bank-heist') {
-      // Spawn Armored Getaway Van near the Bank Steps
+    if (mission.type === 'bank-heist' || mission.type === 'bridge-collapse') {
+      const baseY = mission.y;
+      // Spawn Armored Getaway Van
       const vanGroup = new THREE.Group();
       const vanChassisGeo = new THREE.BoxGeometry(2.6, 1.8, 5.4);
       const vanMat = new THREE.MeshStandardMaterial({ color: 0x111827, metalness: 0.6, roughness: 0.4 });
@@ -471,11 +529,11 @@ export class CrimeManager {
       siren.position.set(0, 1.95, 0);
       vanGroup.add(siren);
 
-      vanGroup.position.set(mission.x - 12, 0, mission.z + 4);
+      vanGroup.position.set(mission.x - 12, baseY, mission.z + 4);
       vanGroup.rotation.y = 0.4;
       this.missionGroup.add(vanGroup);
 
-      // Spawn 4 Armored Thugs surrounding the vault entrance (strictly grounded at y = 0.0)
+      // Spawn 4 Armored Thugs
       for (let i = 0; i < 4; i++) {
         const id = `thug_${i}`;
         const offsetAngle = (i / 4) * Math.PI * 2;
@@ -486,7 +544,7 @@ export class CrimeManager {
           id,
           type: 'thug',
           x: ex,
-          y: 0.0,
+          y: baseY,
           z: ez,
           health: 100,
           maxHealth: 100,
@@ -494,7 +552,7 @@ export class CrimeManager {
         });
 
         const thugMesh = this.createThugMesh();
-        thugMesh.position.set(ex, 0, ez);
+        thugMesh.position.set(ex, baseY, ez);
         thugMesh.rotation.y = offsetAngle + Math.PI;
 
         this.missionGroup.add(thugMesh);
@@ -541,10 +599,11 @@ export class CrimeManager {
         this.missionGroup.add(fireGroup);
         this.enemyMeshes.set(id, fireGroup);
       }
-    } else if (mission.type === 'lexcorp-drones') {
-      for (let i = 0; i < 3; i++) {
+    } else if (mission.type === 'lexcorp-drones' || mission.type === 'star-labs-breach') {
+      const droneCount = mission.maxProgress;
+      for (let i = 0; i < droneCount; i++) {
         const id = `drone_${i}`;
-        const angle = (i / 3) * Math.PI * 2;
+        const angle = (i / droneCount) * Math.PI * 2;
         const dx = mission.x + Math.cos(angle) * 35;
         const dz = mission.z + Math.sin(angle) * 35;
 
@@ -576,7 +635,7 @@ export class CrimeManager {
         health: 100,
         maxHealth: 100,
         active: true,
-        speed: 38,
+        speed: 36,
       });
 
       const carGroup = new THREE.Group();
@@ -589,6 +648,7 @@ export class CrimeManager {
       const body = new THREE.Mesh(bodyGeo, bodyMat);
       body.position.y = 0.85;
       body.castShadow = true;
+      body.userData.baseColorHex = 0x09090b;
       carGroup.add(body);
 
       // Flashing underglow
@@ -609,7 +669,30 @@ export class CrimeManager {
     }
   }
 
-  private freezeEnemy(enemy: EnemyEntity, mesh: THREE.Group) {
+  private flashEnemyMesh(enemy: EnemyEntity, mesh: THREE.Group, flashHex: number = 0xffffff) {
+    enemy.hitFlashTimer = 0.14;
+    mesh.traverse((child) => {
+      if ((child as THREE.Mesh).isMesh && (child as THREE.Mesh).material) {
+        const m = (child as THREE.Mesh).material as THREE.MeshStandardMaterial;
+        if (m.color && child.userData.baseColorHex !== undefined) {
+          m.color.setHex(flashHex);
+        }
+      }
+    });
+  }
+
+  private restoreEnemyMeshColor(mesh: THREE.Group) {
+    mesh.traverse((child) => {
+      if ((child as THREE.Mesh).isMesh && (child as THREE.Mesh).material) {
+        const m = (child as THREE.Mesh).material as THREE.MeshStandardMaterial;
+        if (m.color && child.userData.baseColorHex !== undefined) {
+          m.color.setHex(child.userData.baseColorHex);
+        }
+      }
+    });
+  }
+
+  private freezeEnemy(enemy: EnemyEntity, _mesh: THREE.Group) {
     if (enemy.frozen) return;
     enemy.frozen = true;
     enemy.speed = 0;
@@ -658,6 +741,19 @@ export class CrimeManager {
 
     this.missionGroup.add(iceMesh);
     this.frozenIceMeshes.set(enemy.id, iceMesh);
+  }
+
+  private scheduleNextMissionIfComplete(mission: Mission): boolean {
+    if (mission.progress >= mission.maxProgress && !mission.completed) {
+      mission.completed = true;
+      audioService.playMissionSuccess();
+      setTimeout(() => {
+        const nextIdx = (this.activeMissionIndex + 1) % this.missions.length;
+        this.switchMission(nextIdx);
+      }, 3200);
+      return true;
+    }
+    return false;
   }
 
   public shatterIceStatue(enemy: EnemyEntity, mesh?: THREE.Group, comboStep: number = 0): boolean {
@@ -719,16 +815,7 @@ export class CrimeManager {
 
     const mission = this.getActiveMission();
     mission.progress += 1;
-    if (mission.progress >= mission.maxProgress) {
-      mission.completed = true;
-      audioService.playMissionSuccess();
-      setTimeout(() => {
-        const nextIdx = (this.activeMissionIndex + 1) % this.missions.length;
-        this.switchMission(nextIdx);
-      }, 3500);
-      return true;
-    }
-    return false;
+    return this.scheduleNextMissionIfComplete(mission);
   }
 
   /**
@@ -770,7 +857,7 @@ export class CrimeManager {
     tracerMesh.lookAt(playerX, targetY, playerZ);
     this.combatVfxGroup.add(tracerMesh);
 
-    const bulletSpeed = 160.0; // Fast realistic bullet speed
+    const bulletSpeed = 160.0;
 
     this.bulletTracers.push({
       mesh: tracerMesh,
@@ -827,11 +914,15 @@ export class CrimeManager {
     playerZ: number,
     isFiringHeat: boolean,
     isFiringFreeze: boolean,
-    playerPower: string | null
+    _playerPower: string | null,
+    playerRotY: number = 0
   ): { missionCompleted: boolean; progressGained: number } {
     let progressGained = 0;
     let missionCompleted = false;
     const mission = this.getActiveMission();
+
+    const forwardX = -Math.sin(playerRotY);
+    const forwardZ = -Math.cos(playerRotY);
 
     // Pulse beacon
     if (this.beaconMesh) {
@@ -844,18 +935,25 @@ export class CrimeManager {
       const mesh = this.enemyMeshes.get(enemy.id);
       if (!mesh) return;
 
+      // Restore hit flash color when timer expires
+      if (enemy.hitFlashTimer && enemy.hitFlashTimer > 0) {
+        enemy.hitFlashTimer -= delta;
+        if (enemy.hitFlashTimer <= 0) {
+          this.restoreEnemyMeshColor(mesh);
+        }
+      }
+
       const dist = Math.hypot(enemy.x - playerX, enemy.y - playerY, enemy.z - playerZ);
+      const horizDist = Math.hypot(enemy.x - playerX, enemy.z - playerZ) || 1;
+      const dotForward = ((enemy.x - playerX) / horizDist) * forwardX + ((enemy.z - playerZ) / horizDist) * forwardZ;
 
       // --- 1. DYNAMIC ENEMY COMBAT BEHAVIORS ---
       if (!enemy.frozen) {
         if (enemy.type === 'thug') {
-          // Thug Combat AI: Face Superman & Shoot when in range!
           if (dist < 65) {
-            // Turn smoothly to aim at Superman
             const targetAngle = Math.atan2(playerX - enemy.x, playerZ - enemy.z);
             mesh.rotation.y = THREE.MathUtils.lerp(mesh.rotation.y, targetAngle, delta * 8);
 
-            // Shoot rifle bursts
             let shootTimer = (this.thugShootTimers.get(enemy.id) || (0.8 + Math.random() * 1.5)) - delta;
             if (shootTimer <= 0) {
               shootTimer = 1.2 + Math.random() * 1.2;
@@ -863,11 +961,9 @@ export class CrimeManager {
             }
             this.thugShootTimers.set(enemy.id, shootTimer);
           } else {
-            // Idle scanning guard patrol
             mesh.rotation.y += Math.sin(Date.now() * 0.002 + parseInt(enemy.id.split('_')[1] || '0')) * 0.008;
           }
 
-          // Muzzle flash timer fadeout
           const flashTime = this.thugMuzzleFlashTimers.get(enemy.id) || 0;
           if (flashTime > 0) {
             const nextFlash = flashTime - delta;
@@ -884,18 +980,19 @@ export class CrimeManager {
           }
         } else if (enemy.type === 'drone') {
           const time = Date.now() * 0.001;
-          enemy.x = mission.x + Math.cos(time + parseInt(enemy.id.split('_')[1] || '0') * 2) * 35;
-          enemy.z = mission.z + Math.sin(time + parseInt(enemy.id.split('_')[1] || '0') * 2) * 35;
+          const idx = parseInt(enemy.id.split('_')[1] || '0');
+          // Evasive weave when heat vision is fired near drone
+          const evasiveOffset = isFiringHeat && dist < 85 ? Math.sin(time * 8 + idx) * 6 : 0;
+          enemy.x = mission.x + Math.cos(time + idx * 1.6) * 35 + evasiveOffset;
+          enemy.z = mission.z + Math.sin(time + idx * 1.6) * 35;
           mesh.position.set(enemy.x, enemy.y, enemy.z);
 
-          // Spin rotor discs
           mesh.traverse((child) => {
             if (child.name === 'rotor') {
               child.rotation.y += delta * 24;
             }
           });
 
-          // Aim and pulse plasma when player is near
           if (dist < 75) {
             mesh.lookAt(playerX, playerY, playerZ);
             let dTimer = (this.droneShootTimers.get(enemy.id) || 1.5) - delta;
@@ -909,24 +1006,25 @@ export class CrimeManager {
           enemy.z -= (enemy.speed || 30) * delta;
           if (enemy.z < -300) enemy.z = 300;
           mesh.position.set(enemy.x, enemy.y, enemy.z);
+          // Keep mission marker synced with moving getaway car!
+          mission.x = enemy.x;
+          mission.z = enemy.z;
+          if (this.beaconMesh) {
+            this.beaconMesh.position.set(enemy.x, enemy.y + 150, enemy.z);
+          }
         } else if (enemy.type === 'fire') {
-          // Volumetric flame pulsing
           mesh.scale.y = 1.0 + Math.sin(Date.now() * 0.012 + enemy.x) * 0.3;
           mesh.scale.x = 1.0 + Math.cos(Date.now() * 0.01 + enemy.z) * 0.15;
         }
       }
 
       // --- 2. SUPERMAN POWER IMPACTS ---
-      // Heat Vision Hit
-      if (isFiringHeat && dist < 90) {
-        enemy.health -= delta * 150;
-        // Thermal glow feedback
-        mesh.traverse((child) => {
-          if ((child as THREE.Mesh).isMesh && (child as THREE.Mesh).material) {
-            const m = (child as THREE.Mesh).material as THREE.MeshStandardMaterial;
-            if (m.color) m.color.setHex(0xffffff);
-          }
-        });
+      // Heat Vision Hit (prioritize enemies in front cone or very close)
+      if (isFiringHeat && dist < 95 && (dotForward > 0.15 || dist < 18)) {
+        if (enemy.type !== 'fire') {
+          enemy.health -= delta * 165;
+          this.flashEnemyMesh(enemy, mesh, 0xffedd5);
+        }
         if (enemy.frozen) {
           const iceMesh = this.frozenIceMeshes.get(enemy.id);
           if (iceMesh) {
@@ -938,11 +1036,11 @@ export class CrimeManager {
       }
 
       // Freeze Breath Hit
-      if (isFiringFreeze && dist < 32) {
-        enemy.health -= delta * 90;
-        enemy.freezeProgress = (enemy.freezeProgress || 0) + delta * 160;
+      if (isFiringFreeze && dist < 38 && (dotForward > 0.05 || dist < 15)) {
+        enemy.health -= delta * 105;
+        enemy.freezeProgress = (enemy.freezeProgress || 0) + delta * 170;
 
-        if (enemy.freezeProgress >= 70 && !enemy.frozen) {
+        if (enemy.freezeProgress >= 65 && !enemy.frozen) {
           this.freezeEnemy(enemy, mesh);
         }
       }
@@ -961,14 +1059,8 @@ export class CrimeManager {
           this.frozenIceMeshes.delete(enemy.id);
         }
 
-        if (mission.progress >= mission.maxProgress) {
-          mission.completed = true;
+        if (this.scheduleNextMissionIfComplete(mission)) {
           missionCompleted = true;
-          audioService.playMissionSuccess();
-          setTimeout(() => {
-            const nextIdx = (this.activeMissionIndex + 1) % this.missions.length;
-            this.switchMission(nextIdx);
-          }, 3500);
         }
       }
     });
@@ -984,17 +1076,14 @@ export class CrimeManager {
       bullet.mesh.position.y += bullet.vy * delta;
       bullet.mesh.position.z += bullet.vz * delta;
 
-      // Check deflection proximity to Superman's chest
       const dToPlayer = bullet.mesh.position.distanceTo(playerChestPos);
       if (dToPlayer < 1.6) {
-        // PING! Bullets ricochet off Superman's indestructible chest!
         this.spawnBulletDeflection(playerX, playerY + 1.2, playerZ);
         this.combatVfxGroup.remove(bullet.mesh);
         this.bulletTracers.splice(b, 1);
         continue;
       }
 
-      // Expired bullets
       if (bullet.life <= 0 || bullet.mesh.position.y <= 0) {
         this.combatVfxGroup.remove(bullet.mesh);
         this.bulletTracers.splice(b, 1);
@@ -1012,7 +1101,7 @@ export class CrimeManager {
         continue;
       }
 
-      spark.vy -= 28 * delta; // Gravity
+      spark.vy -= 28 * delta;
       spark.mesh.position.x += spark.vx * delta;
       spark.mesh.position.y += spark.vy * delta;
       spark.mesh.position.z += spark.vz * delta;
@@ -1092,8 +1181,9 @@ export class CrimeManager {
     let missionCompleted = false;
     const mission = this.getActiveMission();
 
-    const dirX = Math.sin(rotY);
-    const dirZ = Math.cos(rotY);
+    // Superman's forward vector matches (-Math.sin(rotY), -Math.cos(rotY))
+    const dirX = -Math.sin(rotY);
+    const dirZ = -Math.cos(rotY);
 
     this.enemies.forEach((enemy) => {
       if (!enemy.active) return;
@@ -1102,12 +1192,12 @@ export class CrimeManager {
       const dz = enemy.z - playerZ;
       const dist = Math.hypot(dx, dz);
 
-      if (dist < 8.2 && Math.abs(dy) < 4.8) {
+      if (dist < 9.2 && Math.abs(dy) < 5.5) {
         const normDx = dx / (dist || 1);
         const normDz = dz / (dist || 1);
         const dot = normDx * dirX + normDz * dirZ;
 
-        if (dot > 0.08) {
+        if (dot > -0.15 || dist < 3.5) {
           hits++;
           const mesh = this.enemyMeshes.get(enemy.id);
 
@@ -1118,22 +1208,17 @@ export class CrimeManager {
             return;
           }
 
-          const damage = comboStep === 2 ? 180 : 120;
+          const damage = comboStep >= 2 ? 180 : 120;
           enemy.health -= damage;
 
-          // Physics knockback impulse
-          const knockPower = comboStep === 2 ? 18 : 10;
+          // Physics knockback impulse along punch direction
+          const knockPower = comboStep >= 2 ? 16 : 9;
           enemy.x += dirX * knockPower;
           enemy.z += dirZ * knockPower;
 
           if (mesh) {
             mesh.position.set(enemy.x, enemy.y, enemy.z);
-            mesh.traverse((child) => {
-              if ((child as THREE.Mesh).isMesh && (child as THREE.Mesh).material) {
-                const m = (child as THREE.Mesh).material as THREE.MeshStandardMaterial;
-                if (m.color) m.color.setHex(0xffffff);
-              }
-            });
+            this.flashEnemyMesh(enemy, mesh, 0xffffff);
           }
 
           if (enemy.health <= 0 && enemy.active) {
@@ -1143,37 +1228,31 @@ export class CrimeManager {
               this.missionGroup.remove(mesh);
               this.enemyMeshes.delete(enemy.id);
             }
-            if (mission.progress >= mission.maxProgress) {
-              mission.completed = true;
+            if (this.scheduleNextMissionIfComplete(mission)) {
               missionCompleted = true;
-              audioService.playMissionSuccess();
-              setTimeout(() => {
-                const nextIdx = (this.activeMissionIndex + 1) % this.missions.length;
-                this.switchMission(nextIdx);
-              }, 3500);
             }
           }
         }
       }
     });
 
-    // Punch urban props
+    // Punch urban props in front of Superman
     this.urbanProps.forEach((prop) => {
       const dx = prop.x - playerX;
       const dy = prop.y - playerY;
       const dz = prop.z - playerZ;
       const dist = Math.hypot(dx, dz);
 
-      if (dist < 7.5 && Math.abs(dy) < 4.0) {
+      if (dist < 8.5 && Math.abs(dy) < 4.5) {
         const normDx = dx / (dist || 1);
         const normDz = dz / (dist || 1);
         const dot = normDx * dirX + normDz * dirZ;
 
-        if (dot > 0.12) {
+        if (dot > -0.1 || dist < 3.0) {
           propsHit++;
-          const force = comboStep === 2 ? 58 : 38;
+          const force = comboStep >= 2 ? 58 : 38;
           prop.vx = dirX * force + (Math.random() - 0.5) * 8;
-          prop.vy = comboStep === 2 ? 20 : 12;
+          prop.vy = comboStep >= 2 ? 20 : 12;
           prop.vz = dirZ * force + (Math.random() - 0.5) * 8;
           prop.rotVx = (Math.random() - 0.5) * 18;
           prop.rotVz = (Math.random() - 0.5) * 18;
@@ -1189,8 +1268,74 @@ export class CrimeManager {
     return { hits, propsHit, iceShattered, missionCompleted };
   }
 
-  public handleGroundSlamHit(playerX: number, playerZ: number, radius: number = 24) {
+  public handleExplosionHit(
+    impactPoint: THREE.Vector3,
+    radius: number = 24.0,
+    damage: number = 160
+  ): { hits: number; missionCompleted: boolean } {
     let hits = 0;
+    let missionCompleted = false;
+    const mission = this.getActiveMission();
+
+    this.enemies.forEach((enemy) => {
+      if (!enemy.active) return;
+      const d = Math.hypot(enemy.x - impactPoint.x, enemy.y - impactPoint.y, enemy.z - impactPoint.z);
+      if (d <= radius) {
+        hits++;
+        const mesh = this.enemyMeshes.get(enemy.id);
+        if (enemy.frozen) {
+          if (this.shatterIceStatue(enemy, mesh, 3)) {
+            missionCompleted = true;
+          }
+          return;
+        }
+
+        enemy.health -= damage;
+        const dx = enemy.x - impactPoint.x;
+        const dz = enemy.z - impactPoint.z;
+        const len = Math.hypot(dx, dz) || 1;
+        enemy.x += (dx / len) * 14;
+        enemy.z += (dz / len) * 14;
+        if (mesh) {
+          mesh.position.set(enemy.x, enemy.y, enemy.z);
+          this.flashEnemyMesh(enemy, mesh, 0xfef08a);
+        }
+
+        if (enemy.health <= 0 && enemy.active) {
+          enemy.active = false;
+          mission.progress += 1;
+          if (mesh) {
+            this.missionGroup.remove(mesh);
+            this.enemyMeshes.delete(enemy.id);
+          }
+          if (this.scheduleNextMissionIfComplete(mission)) {
+            missionCompleted = true;
+          }
+        }
+      }
+    });
+
+    // Scatter nearby urban props
+    this.urbanProps.forEach((prop) => {
+      const d = Math.hypot(prop.x - impactPoint.x, prop.z - impactPoint.z);
+      if (d < radius * 0.85) {
+        const dx = prop.x - impactPoint.x;
+        const dz = prop.z - impactPoint.z;
+        const len = Math.hypot(dx, dz) || 1;
+        prop.vx = (dx / len) * 42;
+        prop.vy = 16 + Math.random() * 10;
+        prop.vz = (dz / len) * 42;
+        prop.rotVx = (Math.random() - 0.5) * 20;
+        prop.rotVz = (Math.random() - 0.5) * 20;
+      }
+    });
+
+    return { hits, missionCompleted };
+  }
+
+  public handleGroundSlamHit(playerX: number, playerZ: number, radius: number = 26) {
+    let hits = 0;
+    const mission = this.getActiveMission();
 
     this.enemies.forEach((enemy) => {
       if (!enemy.active) return;
@@ -1201,13 +1346,24 @@ export class CrimeManager {
           this.shatterIceStatue(enemy, mesh, 2);
         } else {
           enemy.health -= 120;
-          // Blast thugs away from slam center
           const dx = enemy.x - playerX;
           const dz = enemy.z - playerZ;
           const len = Math.hypot(dx, dz) || 1;
           enemy.x += (dx / len) * 12;
           enemy.z += (dz / len) * 12;
-          if (mesh) mesh.position.set(enemy.x, enemy.y, enemy.z);
+          if (mesh) {
+            mesh.position.set(enemy.x, enemy.y, enemy.z);
+            this.flashEnemyMesh(enemy, mesh, 0xffffff);
+          }
+          if (enemy.health <= 0 && enemy.active) {
+            enemy.active = false;
+            mission.progress += 1;
+            if (mesh) {
+              this.missionGroup.remove(mesh);
+              this.enemyMeshes.delete(enemy.id);
+            }
+            this.scheduleNextMissionIfComplete(mission);
+          }
         }
         hits++;
       }
@@ -1227,8 +1383,12 @@ export class CrimeManager {
     const enemy = this.enemies.find((e) => e.id === id);
     if (!enemy || !enemy.active) return false;
 
-    enemy.health -= damage;
     const mesh = this.enemyMeshes.get(id);
+    if (enemy.frozen) {
+      return this.shatterIceStatue(enemy, mesh, 2);
+    }
+
+    enemy.health -= damage;
 
     const dx = enemy.x - origin.x;
     const dz = enemy.z - origin.z;
@@ -1238,6 +1398,7 @@ export class CrimeManager {
 
     if (mesh) {
       mesh.position.set(enemy.x, enemy.y, enemy.z);
+      this.flashEnemyMesh(enemy, mesh, 0xffffff);
     }
 
     if (enemy.health <= 0) {
@@ -1248,14 +1409,7 @@ export class CrimeManager {
         this.missionGroup.remove(mesh);
         this.enemyMeshes.delete(id);
       }
-      if (mission.progress >= mission.maxProgress) {
-        mission.completed = true;
-        audioService.playMissionSuccess();
-        setTimeout(() => {
-          const nextIdx = (this.activeMissionIndex + 1) % this.missions.length;
-          this.switchMission(nextIdx);
-        }, 3500);
-      }
+      this.scheduleNextMissionIfComplete(mission);
       return true;
     }
     return false;

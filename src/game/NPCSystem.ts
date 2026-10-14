@@ -59,7 +59,7 @@ export class NPCSystem {
     const headGeo = new THREE.SphereGeometry(0.125, 10, 10);
     // Hair cap: slightly larger sphere with cutout
     const hairGeo = new THREE.SphereGeometry(0.132, 10, 8);
-    // Fedora Hat for Daily Planet reporters
+    // Fedora Hat for local reporters and street journalists
     const hatBrimGeo = new THREE.CylinderGeometry(0.24, 0.24, 0.03, 12);
     const hatCrownGeo = new THREE.CylinderGeometry(0.14, 0.15, 0.12, 12);
     // Police Cap
@@ -87,7 +87,7 @@ export class NPCSystem {
       new THREE.MeshStandardMaterial({ color: 0x64748b, roughness: 0.5 }), // Gray
     ];
 
-    // Business Suits (Daily Planet bankers and executives)
+    // Business suits for the historic center and office districts
     const suitMats = [
       new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.6 }), // Navy
       new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.6 }), // Midnight
@@ -95,14 +95,14 @@ export class NPCSystem {
       new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.65 }), // Slate
     ];
 
-    // Reporter Trench Coats (Daily Planet journalists like Lois & Clark)
+    // Reporter trench coats
     const trenchMats = [
       new THREE.MeshStandardMaterial({ color: 0xd4b996, roughness: 0.7 }), // Khaki
       new THREE.MeshStandardMaterial({ color: 0x78716c, roughness: 0.7 }), // Warm stone
       new THREE.MeshStandardMaterial({ color: 0xa8a29e, roughness: 0.7 }), // Light trench
     ];
 
-    // Casual Attire (Metropolis citizens)
+    // Casual attire in Bogotá's cool high-altitude weather
     const casualMats = [
       new THREE.MeshStandardMaterial({ color: 0x2563eb, roughness: 0.7 }), // Blue jacket
       new THREE.MeshStandardMaterial({ color: 0xdc2626, roughness: 0.7 }), // Crimson hoodie
@@ -111,17 +111,18 @@ export class NPCSystem {
       new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.6 }), // White windbreaker
     ];
 
-    // Police Attire (Metropolis Special Crimes Unit / Police)
+    // Bogotá Metropolitan Police
     const policeMat = new THREE.MeshStandardMaterial({ color: 0x172554, roughness: 0.5 });
     const policeBadgeMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, metalness: 0.8, roughness: 0.2 });
 
-    // Sidewalk zones across all Metropolis districts
+    // Pedestrian pockets around the playable Bogotá landmarks.
     const zones = [
-      { minX: -130, maxX: 130, minZ: -130, maxZ: 130, count: 42, label: 'Downtown' },
-      { minX: 90, maxX: 270, minZ: -190, maxZ: -10, count: 24, label: 'LexCorp' },
-      { minX: -270, maxX: -70, minZ: -210, maxZ: 60, count: 24, label: 'Financial' },
-      { minX: -160, maxX: 160, minZ: 50, maxZ: 270, count: 28, label: 'Centennial Park' },
-      { minX: -460, maxX: -270, minZ: -130, maxZ: 130, count: 18, label: 'Bayside Harbor' },
+      { minX: -130, maxX: 130, minZ: -130, maxZ: 130, count: 42, label: 'La Candelaria' },
+      { minX: 100, maxX: 260, minZ: -210, maxZ: -30, count: 24, label: 'Centro Internacional' },
+      { minX: -270, maxX: -80, minZ: -210, maxZ: 60, count: 24, label: 'Centro Histórico' },
+      { minX: -340, maxX: -150, minZ: -520, maxZ: -330, count: 34, label: 'Parque Simón Bolívar' },
+      { minX: 190, maxX: 340, minZ: -460, maxZ: -320, count: 24, label: 'El Campín' },
+      { minX: 90, maxX: 180, minZ: 90, maxZ: 260, count: 18, label: 'Carrera Décima' },
     ];
 
     let idCounter = 0;
@@ -136,11 +137,11 @@ export class NPCSystem {
         let outfitMat = casualMats[Math.floor(Math.random() * casualMats.length)];
         let pantsMat = casualMats[Math.floor(Math.random() * casualMats.length)];
 
-        if (zone.label === 'Financial' || randArchetype < 0.28) {
+        if (zone.label === 'Centro Histórico' || zone.label === 'Centro Internacional' || randArchetype < 0.28) {
           archetype = 'business';
           outfitMat = suitMats[Math.floor(Math.random() * suitMats.length)];
           pantsMat = outfitMat;
-        } else if (zone.label === 'Downtown' && randArchetype < 0.48) {
+        } else if (zone.label === 'La Candelaria' && randArchetype < 0.48) {
           archetype = 'reporter';
           outfitMat = trenchMats[Math.floor(Math.random() * trenchMats.length)];
           pantsMat = suitMats[Math.floor(Math.random() * suitMats.length)];
@@ -331,9 +332,11 @@ export class NPCSystem {
     const citizenCheers = [
       '¡Es Superman! ¡El Hombre de Acero!',
       '¡Miren arriba, en el cielo!',
-      '¡Metrópolis está a salvo contigo!',
-      '¡Gracias por protegernos, Superman!',
-      '¡El Daily Planet va a publicar esto en primera plana!',
+      '¡Bogotá está a salvo contigo!',
+      '¡Gracias por cuidar a la gente, Superman!',
+      '¡Que se entere toda la ciudad: nos salvaste!',
+      '¡La Caracas está libre, sigamos evacuando!',
+      '¡El teleférico de Monserrate está a salvo!',
     ];
 
     for (let i = 0; i < this.npcs.length; i++) {

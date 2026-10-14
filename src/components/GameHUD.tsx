@@ -1,6 +1,23 @@
 import React, { useState } from 'react';
-import { PowerType, Mission } from '../types/game';
-import { Flame, Snowflake, Zap, Eye, Volume2, VolumeX, HelpCircle, Sun, Heart, ChevronDown, ChevronUp, Shield } from 'lucide-react';
+import { PowerType, Mission, LockedTargetInfo, TimeOfDayMode } from '../types/game';
+import {
+  Flame,
+  Snowflake,
+  Zap,
+  Eye,
+  Volume2,
+  VolumeX,
+  HelpCircle,
+  Sun,
+  Moon,
+  Sunset,
+  Heart,
+  ChevronDown,
+  ChevronUp,
+  Shield,
+  Crosshair,
+  Activity,
+} from 'lucide-react';
 
 interface GameHUDProps {
   health: number;
@@ -12,19 +29,26 @@ interface GameHUDProps {
   isSupersonic: boolean;
   activePower: PowerType | null;
   xrayActive: boolean;
+  timeOfDay: TimeOfDayMode;
   activeMission: Mission | null;
   hopeLevel: number;
   altMeters?: number;
   isMuted: boolean;
   onToggleMute: () => void;
   onOpenHelp: () => void;
+  onCycleTimeOfDay: () => void;
+  onTogglePerfHud: () => void;
   onSelectPower: (power: PowerType) => void;
+  onTriggerPunch: () => void;
+  onTriggerGrabOrSlam: () => void;
+  onTriggerLockOn: () => void;
   onSwitchMission: (index: number) => void;
   missionList: Mission[];
   currentMissionIndex: number;
   minimapNode?: React.ReactNode;
   isHoldingObject?: boolean;
   hasLockedTarget?: boolean;
+  lockedTargetInfo?: LockedTargetInfo | null;
   comboStep?: number;
   citizenDialogue?: string | null;
 }
@@ -39,25 +63,46 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   isSupersonic,
   activePower,
   xrayActive,
+  timeOfDay,
   activeMission,
   hopeLevel,
   altMeters = 80,
   isMuted,
   onToggleMute,
   onOpenHelp,
+  onCycleTimeOfDay,
+  onTogglePerfHud,
   onSelectPower,
+  onTriggerPunch,
+  onTriggerGrabOrSlam,
+  onTriggerLockOn,
   onSwitchMission,
   missionList,
   currentMissionIndex,
   minimapNode,
   isHoldingObject = false,
   hasLockedTarget = false,
+  lockedTargetInfo = null,
   comboStep = 0,
   citizenDialogue = null,
 }) => {
   const [isMissionMinimized, setIsMissionMinimized] = useState(() => {
     return typeof window !== 'undefined' ? window.innerWidth < 1024 : false;
   });
+
+  const timeLabel =
+    timeOfDay === 'cyber-night'
+      ? 'Noche Cyberpunk'
+      : timeOfDay === 'daylight'
+      ? 'Día Solar'
+      : 'Atardecer Dorado';
+
+  const targetTypeLabel: Record<string, string> = {
+    thug: 'Mercenario Armado',
+    drone: 'Dron de Los Silentes',
+    fire: 'Foco de Incendio',
+    'getaway-car': 'Blindado de Fuga',
+  };
 
   return (
     <div className="absolute inset-0 pointer-events-none select-none flex flex-col justify-between p-4 z-20">
@@ -73,20 +118,59 @@ export const GameHUD: React.FC<GameHUDProps> = ({
         </div>
       )}
 
-      {/* --- TOP BAR (Strict Top Bar Contract) --- */}
-      <header className="pointer-events-auto flex items-center justify-between gap-8 px-6 py-3.5 bg-slate-950/85 backdrop-blur-md rounded-2xl border border-slate-800 shadow-2xl">
+      {/* Active Combat Combo & Lock-On Target Telemetry Banner */}
+      {(comboStep > 0 || (hasLockedTarget && lockedTargetInfo)) && (
+        <div className="fixed top-32 left-1/2 -translate-x-1/2 z-30 pointer-events-none flex flex-col items-center gap-2">
+          {comboStep > 0 && (
+            <div className="px-4 py-1.5 rounded-xl bg-amber-500/20 border border-amber-400/80 backdrop-blur-md shadow-xl flex items-center gap-2 animate-bounce">
+              <Zap className="w-4 h-4 text-amber-300 fill-amber-300" />
+              <span className="font-hud font-extrabold text-xs tracking-wider text-amber-300 uppercase">
+                {comboStep >= 4
+                  ? '¡IMPACTO METEORO KRIPTONIANO! (x4)'
+                  : `COMBO DE SUPERFUERZA x${comboStep}`}
+              </span>
+            </div>
+          )}
+
+          {hasLockedTarget && lockedTargetInfo && (
+            <div className="px-4 py-2 rounded-xl bg-slate-950/90 border border-rose-500/70 backdrop-blur-md shadow-xl min-w-[230px]">
+              <div className="flex items-center justify-between text-[11px] font-bold text-rose-400 mb-1">
+                <span className="flex items-center gap-1.5 font-hud uppercase">
+                  <Crosshair className="w-3.5 h-3.5 text-rose-500 animate-spin" />
+                  {targetTypeLabel[lockedTargetInfo.type] || 'Objetivo'}
+                </span>
+                <span className="font-mono text-slate-300">{lockedTargetInfo.distance}m</span>
+              </div>
+              <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-rose-600 to-amber-400 transition-all duration-150"
+                  style={{
+                    width: `${Math.max(
+                      0,
+                      Math.min(100, (lockedTargetInfo.health / lockedTargetInfo.maxHealth) * 100)
+                    )}%`,
+                  }}
+                />
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* --- TOP BAR --- */}
+      <header className="pointer-events-auto flex items-center justify-between gap-4 px-5 py-3 bg-slate-950/85 backdrop-blur-md rounded-2xl border border-slate-800 shadow-2xl">
         {/* Zone 1: Brand Wordmark */}
         <div className="flex items-center gap-3 shrink-0">
           <span className="text-lg font-extrabold tracking-wider text-white font-hud whitespace-nowrap shrink-0">
-            METROPOLIS 3D
+            BOGOTÁ 3D
           </span>
           <span className="hidden sm:inline text-xs text-rose-500 font-semibold uppercase tracking-wider">
-            Superman Sandbox
+            Guardián de Bogotá
           </span>
         </div>
 
-        {/* Zone 2: Clean unboxed metadata with typographic separators */}
-        <nav className="hidden md:flex items-center gap-6 text-xs text-slate-300 font-medium">
+        {/* Zone 2: Clean metadata with typographic separators */}
+        <nav className="hidden lg:flex items-center gap-5 text-xs text-slate-300 font-medium">
           <span className="text-white whitespace-nowrap shrink-0">
             Modo: {isFlying ? (isSupersonic ? 'Vuelo Supersónico' : 'Vuelo Libre') : 'Patrulla a Pie'}
           </span>
@@ -102,7 +186,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
             <>
               <span aria-hidden="true" className="text-slate-600">·</span>
               <span className="text-amber-300 font-extrabold animate-pulse whitespace-nowrap shrink-0 bg-amber-500/20 px-2 py-0.5 rounded border border-amber-400">
-                VEHÍCULO SOSTENIDO [F / CLIC LANZAR]
+                OBJETO SOSTENIDO [F / CLIC LANZAR]
               </span>
             </>
           )}
@@ -125,13 +209,40 @@ export const GameHUD: React.FC<GameHUDProps> = ({
         </nav>
 
         {/* Zone 3: Primary Action & Controls */}
-        <div className="flex items-center gap-3 shrink-0">
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            onClick={onCycleTimeOfDay}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-200 bg-slate-800/80 hover:bg-slate-700 rounded-xl transition-colors border border-slate-700/60"
+            title="Cambiar Hora del Día (Tecla T)"
+          >
+            {timeOfDay === 'cyber-night' ? (
+              <Moon className="w-3.5 h-3.5 text-indigo-400" />
+            ) : timeOfDay === 'daylight' ? (
+              <Sun className="w-3.5 h-3.5 text-amber-300" />
+            ) : (
+              <Sunset className="w-3.5 h-3.5 text-amber-400" />
+            )}
+            <span className="hidden sm:inline">{timeLabel}</span>
+          </button>
+
+          <button
+            onClick={onTogglePerfHud}
+            className="p-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors border border-slate-700/60"
+            title="Panel de Rendimiento 60 FPS (F8)"
+          >
+            <Activity className="w-4 h-4 text-emerald-400" />
+          </button>
+
           <button
             onClick={onToggleMute}
             className="p-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors border border-slate-700/60"
             title={isMuted ? 'Activar Sonido' : 'Silenciar'}
           >
-            {isMuted ? <VolumeX className="w-4 h-4 text-rose-400" /> : <Volume2 className="w-4 h-4 text-sky-400" />}
+            {isMuted ? (
+              <VolumeX className="w-4 h-4 text-rose-400" />
+            ) : (
+              <Volume2 className="w-4 h-4 text-sky-400" />
+            )}
           </button>
 
           <button
@@ -181,17 +292,21 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           </div>
 
           {/* Speedometer display */}
-          <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between">
+          <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between gap-2">
             <div className="flex items-center gap-1">
               <span className="text-[11px] font-medium text-slate-400 uppercase tracking-wider">Velocidad</span>
               {isSupersonic && (
                 <span className="text-[9px] font-mono font-bold text-amber-300 bg-amber-950/80 px-1.5 py-0.5 rounded border border-amber-600 animate-pulse">
-                  {isFlying ? 'MACH SUPERSONIC' : 'SÚPER SPRINT (SUELO)'}
+                  {isFlying ? 'MACH' : 'SPRINT'}
                 </span>
               )}
             </div>
             <div className="flex items-baseline gap-1">
-              <span className={`text-base font-bold font-hud tabular-nums ${isSupersonic ? 'text-amber-300' : 'text-sky-300'}`}>
+              <span
+                className={`text-base font-bold font-hud tabular-nums ${
+                  isSupersonic ? 'text-amber-300' : 'text-sky-300'
+                }`}
+              >
                 {mach > 0.9 ? `MACH ${mach.toFixed(1)}` : `${Math.round(speedKmh)} km/h`}
               </span>
             </div>
@@ -200,7 +315,11 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           {/* Altitude indicator */}
           <div className="pt-1.5 border-t border-slate-800/80 flex items-center justify-between">
             <span className="text-[11px] font-medium text-slate-400 uppercase tracking-wider">Altitud</span>
-            <span className={`text-xs font-bold font-mono tabular-nums ${altMeters > 550 ? 'text-amber-400 animate-pulse font-hud' : 'text-sky-300'}`}>
+            <span
+              className={`text-xs font-bold font-mono tabular-nums ${
+                altMeters > 550 ? 'text-amber-400 animate-pulse font-hud' : 'text-sky-300'
+              }`}
+            >
               {altMeters > 550 ? `${Math.round(altMeters)}m · ÓRBITA` : `${Math.round(altMeters)}m`}
             </span>
           </div>
@@ -266,7 +385,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                     <div className="flex items-center gap-2">
                       <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-ping" />
                       <span className="text-[11px] font-bold text-rose-400 uppercase tracking-wider font-hud">
-                        Despacho Policial // En Curso
+                        Bogotá // Capítulo {currentMissionIndex + 1} de {missionList.length}
                       </span>
                     </div>
                     <div className="flex items-center gap-2">
@@ -285,7 +404,13 @@ export const GameHUD: React.FC<GameHUDProps> = ({
 
                   <div>
                     <h3 className="text-sm font-bold text-white leading-snug">{activeMission.title}</h3>
-                    <p className="text-xs text-slate-400 mt-0.5">{activeMission.objectiveText}</p>
+                    <span className="text-[10px] font-semibold text-sky-400 block">
+                      {activeMission.locationName}
+                    </span>
+                    <p className="text-[11px] leading-relaxed text-slate-300 mt-2 border-l-2 border-amber-400/70 pl-2">
+                      {activeMission.description}
+                    </p>
+                    <p className="text-xs text-slate-400 mt-1">{activeMission.objectiveText}</p>
                   </div>
 
                   {/* Objective Progress Bar */}
@@ -299,14 +424,16 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                     <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
                       <div
                         className="h-full bg-rose-500 transition-all duration-300"
-                        style={{ width: `${(activeMission.progress / activeMission.maxProgress) * 100}%` }}
+                        style={{
+                          width: `${(activeMission.progress / activeMission.maxProgress) * 100}%`,
+                        }}
                       />
                     </div>
                   </div>
 
                   {/* Switch Mission Selector */}
-                  <div className="flex items-center gap-1.5 pt-2 border-t border-slate-800/80 mt-1">
-                    <span className="text-[10px] text-slate-400 mr-1">Alertas:</span>
+                  <div className="flex items-center flex-wrap gap-1.5 pt-2 border-t border-slate-800/80 mt-1">
+                    <span className="text-[10px] text-slate-400 mr-1">Capítulos:</span>
                     {missionList.map((m, idx) => (
                       <button
                         key={m.id}
@@ -316,6 +443,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                             ? 'bg-rose-500 text-white'
                             : 'bg-slate-800 text-slate-400 hover:text-white'
                         }`}
+                        title={m.title}
                       >
                         {idx + 1}
                       </button>
@@ -332,13 +460,18 @@ export const GameHUD: React.FC<GameHUDProps> = ({
       <div className="hidden md:flex justify-center items-end pb-2">
         <div className="pointer-events-auto flex items-center gap-2 p-2 bg-slate-950/85 backdrop-blur-md rounded-2xl border border-slate-800 shadow-2xl">
           {/* 0. Super Melee Punch (Left Mouse Button) */}
-          <div className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold bg-amber-500/15 text-amber-300 border border-amber-500/40">
+          <button
+            onClick={onTriggerPunch}
+            className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/40 transition-all"
+          >
             <Zap className="w-4 h-4 text-amber-400" />
             <div className="text-left">
-              <div className="leading-none text-white">Puñetazo</div>
+              <div className="leading-none text-white">
+                {comboStep > 0 ? `Combo x${comboStep}` : 'Puñetazo'}
+              </div>
               <div className="text-[10px] text-amber-400 font-mono">Clic Izq</div>
             </div>
-          </div>
+          </button>
 
           {/* 1. Heat Vision */}
           <button
@@ -355,7 +488,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                 <span>Visión Térmica</span>
                 <span className="text-[9px] text-amber-300 font-mono">LASER</span>
               </div>
-              <div className="text-[10px] opacity-75 font-mono">R / 1</div>
+              <div className="text-[10px] opacity-75 font-mono">R / Tecla 1</div>
             </div>
           </button>
 
@@ -371,13 +504,16 @@ export const GameHUD: React.FC<GameHUDProps> = ({
             <Snowflake className="w-4 h-4 text-sky-400" />
             <div className="text-left">
               <div className="leading-none">Aliento Gélido</div>
-              <div className="text-[10px] opacity-75 font-mono">2 / Tecla E</div>
+              <div className="text-[10px] opacity-75 font-mono">E / Tecla 2</div>
             </div>
           </button>
 
           {/* 3. Grab/Throw Vehicle & Ground Slam */}
           <button
-            onClick={() => onSelectPower('ground-slam')}
+            onClick={() => {
+              onSelectPower('ground-slam');
+              onTriggerGrabOrSlam();
+            }}
             className={`flex items-center gap-2.5 px-4 py-2 rounded-xl text-xs font-bold transition-all border ${
               isHoldingObject
                 ? 'bg-amber-500 text-slate-950 border-amber-300 shadow-lg shadow-amber-500/50 animate-pulse'
@@ -388,25 +524,30 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           >
             <Zap className="w-4 h-4 text-amber-400" />
             <div className="text-left">
-              <div className="leading-none">{isHoldingObject ? '¡Lanzar Coche!' : 'Agarrar / Sísmico'}</div>
+              <div className="leading-none">
+                {isHoldingObject ? '¡Lanzar Objeto!' : 'Agarrar / Sísmico'}
+              </div>
               <div className="text-[10px] opacity-75 font-mono">Tecla F / Clic</div>
             </div>
           </button>
 
           {/* 4. Target Lock-On */}
-          <div
+          <button
+            onClick={onTriggerLockOn}
             className={`flex items-center gap-2.5 px-4 py-2 rounded-xl text-xs font-bold transition-all border ${
               hasLockedTarget
-                ? 'bg-rose-600/30 text-rose-300 border-rose-500'
-                : 'bg-slate-900 text-slate-400 border-slate-700/60'
+                ? 'bg-rose-600 text-white border-rose-400 shadow-lg shadow-rose-900/50 animate-pulse'
+                : 'bg-slate-900 text-slate-300 border-slate-700/60 hover:border-rose-500/50'
             }`}
           >
             <Shield className="w-4 h-4 text-rose-400" />
             <div className="text-left">
-              <div className="leading-none">Fijar Blanco 3D</div>
+              <div className="leading-none">
+                {hasLockedTarget ? 'Blanco Fijado' : 'Fijar Blanco 3D'}
+              </div>
               <div className="text-[10px] opacity-75 font-mono">Tecla Q / Tab</div>
             </div>
-          </div>
+          </button>
 
           {/* 5. X-Ray Vision */}
           <button
@@ -420,7 +561,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
             <Eye className="w-4 h-4 text-emerald-400" />
             <div className="text-left">
               <div className="leading-none">Rayos X</div>
-              <div className="text-[10px] opacity-75 font-mono">4 / Tecla X</div>
+              <div className="text-[10px] opacity-75 font-mono">X / Tecla 4</div>
             </div>
           </button>
         </div>

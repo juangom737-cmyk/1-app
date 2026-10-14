@@ -1,6 +1,6 @@
 {
-  "name": "Metropolis 3D: Superman Open World",
-  "description": "Juego de mundo abierto en 3D estilo GTA con Superman. Vuela libremente entre rascacielos, desata superpoderes como visión térmica y aliento gélido, y responde a emergencias dinámicas en Metrópolis.",
+  "name": "Bogotá 3D: Guardián de Bogotá",
+  "description": "Aventura de superhéroes en una Bogotá 3D estilizada. Vuela sobre Monserrate, patrulla El Campín y detén una conspiración en seis capítulos.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { CityBuilding } from '../types/game';
+import { CityBuilding, TimeOfDayMode } from '../types/game';
 
 export interface CityData {
   group: THREE.Group;
@@ -18,9 +18,10 @@ export interface CityData {
     buildingDepth?: number;
   };
   updateLOD?: (cameraPosition: THREE.Vector3) => void;
+  setTimeOfDay?: (mode: TimeOfDayMode) => void;
 }
 
-export function buildMetropolisCity(scene: THREE.Scene): CityData {
+export function buildBogotaCity(scene: THREE.Scene): CityData {
   const cityGroup = new THREE.Group();
   scene.add(cityGroup);
 
@@ -37,12 +38,13 @@ export function buildMetropolisCity(scene: THREE.Scene): CityData {
   }[] = [];
   let dailyPlanetGlobe: THREE.Mesh | null = null;
 
-  // Ground plane (Asphalt covering quadrupled Metropolis)
+  // Ground plane for the playable Bogotá basin. A subtle road atlas gives the
+  // city a readable street rhythm without adding hundreds of extra meshes.
   const groundGeo = new THREE.PlaneGeometry(2400, 2400, 48, 48);
   const groundMat = new THREE.MeshStandardMaterial({
-    color: 0x161c28,
-    roughness: 0.88,
-    metalness: 0.1,
+    color: 0xffffff,
+    roughness: 0.96,
+    metalness: 0.02,
   });
   const ground = new THREE.Mesh(groundGeo, groundMat);
   ground.rotation.x = -Math.PI / 2;
@@ -55,14 +57,13 @@ export function buildMetropolisCity(scene: THREE.Scene): CityData {
   roadGridCanvas.height = 1024;
   const ctx = roadGridCanvas.getContext('2d');
   if (ctx) {
-    ctx.fillStyle = '#1e2430';
+    ctx.fillStyle = '#717a72';
     ctx.fillRect(0, 0, 1024, 1024);
-    // Draw street lines
-    ctx.strokeStyle = '#e2e8f0';
-    ctx.lineWidth = 4;
-    ctx.setLineDash([16, 16]);
-    // Grid roads
-    for (let i = 64; i < 1024; i += 128) {
+    // Local streets and broad avenues, laid out over the basin.
+    ctx.setLineDash([]);
+    ctx.strokeStyle = '#35414a';
+    ctx.lineWidth = 7;
+    for (let i = 32; i < 1024; i += 52) {
       ctx.beginPath();
       ctx.moveTo(0, i);
       ctx.lineTo(1024, i);
@@ -73,7 +74,39 @@ export function buildMetropolisCity(scene: THREE.Scene): CityData {
       ctx.lineTo(i, 1024);
       ctx.stroke();
     }
+
+    ctx.strokeStyle = '#27343c';
+    ctx.lineWidth = 13;
+    for (let i = 16; i < 1024; i += 208) {
+      ctx.beginPath();
+      ctx.moveTo(0, i);
+      ctx.lineTo(1024, i);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(i, 0);
+      ctx.lineTo(i, 1024);
+      ctx.stroke();
+    }
+
+    ctx.strokeStyle = '#e7c76a';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([7, 9]);
+    for (let i = 16; i < 1024; i += 208) {
+      ctx.beginPath();
+      ctx.moveTo(0, i);
+      ctx.lineTo(1024, i);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(i, 0);
+      ctx.lineTo(i, 1024);
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
   }
+  const roadGridTexture = new THREE.CanvasTexture(roadGridCanvas);
+  roadGridTexture.colorSpace = THREE.SRGBColorSpace;
+  groundMat.map = roadGridTexture;
+  groundMat.needsUpdate = true;
 
   // Window & Emissive texture for skyscrapers (Golden Hour / Twilight Glow)
   function createSkyscraperTextures(baseColor: string, litRatio: number = 0.65) {
@@ -160,7 +193,7 @@ export function buildMetropolisCity(scene: THREE.Scene): CityData {
     emissiveIntensity: 0.48,
   });
 
-  // Neon Sign texture generator for Metropolis Entertainment District
+  // Neon Sign texture generator for Bogotá's nightlife districts
   function createNeonSignTexture(text: string, neonColor: string) {
     const canvas = document.createElement('canvas');
     canvas.width = 512;
@@ -208,12 +241,12 @@ export function buildMetropolisCity(scene: THREE.Scene): CityData {
   const helipadTex = new THREE.CanvasTexture(helipadCanvas);
 
   const neonSigns = [
-    { text: 'METROPOLIS LIVE', color: '#ec4899' },
-    { text: 'DAILY PLANET 24/7', color: '#38bdf8' },
-    { text: 'LEXCORP FUTURE', color: '#06b6d4' },
-    { text: 'S.T.A.R. LABS TECH', color: '#a855f7' },
-    { text: 'CYBER METROPOLIS', color: '#eab308' },
-    { text: 'WAYNE DYNAMICS', color: '#94a3b8' },
+    { text: 'BOGOTÁ DE NOCHE', color: '#ec4899' },
+    { text: 'LA CANDELARIA', color: '#fbbf24' },
+    { text: 'CHAPINERO VIVO', color: '#38bdf8' },
+    { text: 'CAFÉ DE ALTURA', color: '#f97316' },
+    { text: 'CARRERA SÉPTIMA', color: '#22c55e' },
+    { text: 'DISTRITO CREATIVO', color: '#a855f7' },
   ];
 
   // Reuse GPU buffers/materials across the procedural district. Each tower
@@ -320,68 +353,101 @@ export function buildMetropolisCity(scene: THREE.Scene): CityData {
     return mesh;
   }
 
-  // --- 1. ICONIC: THE DAILY PLANET BUILDING ---
-  const dpBase = addBuilding(0, 0, 50, 50, 160, matBlueGlass, 'Daily Planet', true, '#38bdf8');
-  // Decorative tiered crown
-  const dpCrownGeo = new THREE.BoxGeometry(38, 20, 38);
-  const dpCrownMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, metalness: 0.7, roughness: 0.3 });
-  const dpCrown = new THREE.Mesh(dpCrownGeo, dpCrownMat);
-  dpCrown.position.set(0, 170, 0);
-  cityGroup.add(dpCrown);
+  // --- PLAZA DE BOLÍVAR & CAPITOLIO NACIONAL ---
+  const plazaStoneMat = new THREE.MeshStandardMaterial({ color: 0xb8ad98, roughness: 0.94 });
+  const plaza = new THREE.Mesh(new THREE.PlaneGeometry(170, 150), plazaStoneMat);
+  plaza.rotation.x = -Math.PI / 2;
+  plaza.position.set(0, 0.06, 0);
+  cityGroup.add(plaza);
 
-  // Giant Golden Spinning Globe
-  const globeGeo = new THREE.SphereGeometry(14, 24, 24);
-  const globeMat = new THREE.MeshStandardMaterial({
-    color: 0xf59e0b,
-    roughness: 0.2,
-    metalness: 0.85,
-    emissive: 0x78350f,
-    emissiveIntensity: 0.2,
-  });
-  dailyPlanetGlobe = new THREE.Mesh(globeGeo, globeMat);
-  dailyPlanetGlobe.position.set(0, 192, 0);
+  const capitolioMat = new THREE.MeshStandardMaterial({ color: 0xc9b99b, roughness: 0.82 });
+  addBuilding(0, 0, 92, 62, 38, capitolioMat, 'Capitolio Nacional · Plaza de Bolívar', true, '#f4c66a');
+
+  // Portico, broad stone steps and the Capitolio's recognizable central dome.
+  const columnGeo = new THREE.CylinderGeometry(1.2, 1.55, 24, 10);
+  const columnMat = new THREE.MeshStandardMaterial({ color: 0xe5d7bd, roughness: 0.78 });
+  for (let i = 0; i < 9; i++) {
+    const column = new THREE.Mesh(columnGeo, columnMat);
+    column.position.set(-34 + i * 8.5, 12.5, 32);
+    column.castShadow = true;
+    cityGroup.add(column);
+  }
+  const dome = new THREE.Mesh(
+    new THREE.SphereGeometry(15, 20, 10, 0, Math.PI * 2, 0, Math.PI / 2),
+    new THREE.MeshStandardMaterial({ color: 0x7c8892, roughness: 0.52, metalness: 0.25 })
+  );
+  dome.position.set(0, 39, 0);
+  cityGroup.add(dome);
+
+  // Colombian flag over the plaza.
+  const flagCanvas = document.createElement('canvas');
+  flagCanvas.width = 192;
+  flagCanvas.height = 96;
+  const flagCtx = flagCanvas.getContext('2d');
+  if (flagCtx) {
+    flagCtx.fillStyle = '#fcd116';
+    flagCtx.fillRect(0, 0, 192, 48);
+    flagCtx.fillStyle = '#003893';
+    flagCtx.fillRect(0, 48, 192, 24);
+    flagCtx.fillStyle = '#ce1126';
+    flagCtx.fillRect(0, 72, 192, 24);
+  }
+  const flagTexture = new THREE.CanvasTexture(flagCanvas);
+  flagTexture.colorSpace = THREE.SRGBColorSpace;
+  const flagPole = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.3, 0.45, 30, 8),
+    new THREE.MeshStandardMaterial({ color: 0xd6d3d1, metalness: 0.72, roughness: 0.3 })
+  );
+  flagPole.position.set(-58, 15, 48);
+  cityGroup.add(flagPole);
+  dailyPlanetGlobe = new THREE.Mesh(
+    new THREE.PlaneGeometry(10, 5),
+    new THREE.MeshBasicMaterial({ map: flagTexture, side: THREE.DoubleSide })
+  );
+  dailyPlanetGlobe.position.set(-52, 26, 48);
   cityGroup.add(dailyPlanetGlobe);
 
-  // Daily Planet Ring
-  const ringGeo = new THREE.TorusGeometry(20, 1.2, 12, 36);
-  const ringMat = new THREE.MeshStandardMaterial({ color: 0xfef08a, roughness: 0.2, metalness: 0.9 });
-  const ring = new THREE.Mesh(ringGeo, ringMat);
-  ring.rotation.x = Math.PI / 3;
-  dailyPlanetGlobe.add(ring);
-
-  // --- 2. ICONIC: LEXCORP TOWER ---
+  // --- 2. ICONIC: TORRE COLPATRIA ---
   const lexCorpMat = new THREE.MeshStandardMaterial({
-    color: 0x0f172a,
-    roughness: 0.15,
-    metalness: 0.9,
-    emissive: 0x06b6d4,
-    emissiveIntensity: 0.15,
+    color: 0x667781,
+    roughness: 0.3,
+    metalness: 0.72,
+    map: texBlueGlass.map,
+    emissive: 0x321b27,
+    emissiveMap: texBlueGlass.emissiveMap,
+    emissiveIntensity: 0.2,
   });
-  addBuilding(120, -100, 55, 55, 210, lexCorpMat, 'LexCorp Tower', true, '#06b6d4');
-  // Helipad on LexCorp
+  addBuilding(120, -100, 55, 55, 210, lexCorpMat, 'Torre Colpatria', true, '#ef4444');
+  // Red aviation bands and helipad make the skyline landmark easy to spot.
+  const colpatriaBandMat = new THREE.MeshStandardMaterial({ color: 0xb91c1c, roughness: 0.5, metalness: 0.3 });
+  for (const bandY of [66, 132, 198]) {
+    const band = new THREE.Mesh(new THREE.BoxGeometry(57, 2.8, 57), colpatriaBandMat);
+    band.position.set(120, bandY, -100);
+    cityGroup.add(band);
+  }
   const helipadGeo = new THREE.CylinderGeometry(16, 16, 2, 24);
   const helipadMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.6 });
   const helipad = new THREE.Mesh(helipadGeo, helipadMat);
   helipad.position.set(120, 211, -100);
   cityGroup.add(helipad);
 
-  // --- 3. ICONIC: METROPOLIS POLICE DEPT HQ ---
+  // --- 3. ICONIC: ESTACIÓN DE POLICÍA DEL CENTRO ---
   const policeMat = new THREE.MeshStandardMaterial({ color: 0x1e3a8a, roughness: 0.5, metalness: 0.5 });
-  addBuilding(-120, 80, 48, 48, 80, policeMat, 'Metropolis Police HQ', true, '#3b82f6');
+  addBuilding(-120, 80, 48, 48, 80, policeMat, 'Estación de Policía Centro', true, '#3b82f6');
 
-  // --- 4. ICONIC: METROPOLIS GRAND BANK ---
-  const bankMat = new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.6, metalness: 0.4 });
-  addBuilding(-80, -90, 42, 42, 60, bankMat, 'Banco Central de Metrópolis', true, '#f59e0b');
+  // --- 4. ICONIC: BANCO DE LA REPÚBLICA ---
+  const bankMat = new THREE.MeshStandardMaterial({ color: 0x9a8060, roughness: 0.7, metalness: 0.28 });
+  addBuilding(-80, -90, 42, 42, 60, bankMat, 'Banco de la República', true, '#f59e0b');
 
-  // --- 5. ICONIC: METROPOLIS HOSPITAL ---
+  // --- 5. ICONIC: HOSPITAL UNIVERSITARIO SAN IGNACIO ---
   const hospitalMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.4, metalness: 0.2 });
-  addBuilding(100, 120, 50, 45, 95, hospitalMat, 'Hospital General de Metrópolis', true, '#ef4444');
+  addBuilding(100, 120, 50, 45, 95, hospitalMat, 'Hospital San Ignacio', true, '#ef4444');
 
-  // --- 6. CENTENNIAL PARK (GREEN OASIS) ---
-  const parkGeo = new THREE.BoxGeometry(100, 0.8, 90);
-  const parkMat = new THREE.MeshStandardMaterial({ color: 0x15803d, roughness: 0.9 });
+  // --- 6. PARQUE METROPOLITANO SIMÓN BOLÍVAR ---
+  const parkGeo = new THREE.BoxGeometry(190, 0.8, 170);
+  const parkMat = new THREE.MeshStandardMaterial({ color: 0x24764b, roughness: 0.9 });
   const park = new THREE.Mesh(parkGeo, parkMat);
-  park.position.set(-160, 0.4, -40);
+  park.position.set(-250, 0.4, -420);
   cityGroup.add(park);
 
   // Trees in park
@@ -390,9 +456,9 @@ export function buildMetropolisCity(scene: THREE.Scene): CityData {
   const leavesGeo = new THREE.SphereGeometry(4, 10, 10);
   const leavesMat = new THREE.MeshStandardMaterial({ color: 0x16a34a, roughness: 0.7 });
 
-  for (let i = 0; i < 18; i++) {
-    const tx = -160 + (Math.random() - 0.5) * 80;
-    const tz = -40 + (Math.random() - 0.5) * 70;
+  for (let i = 0; i < 42; i++) {
+    const tx = -250 + (Math.random() - 0.5) * 164;
+    const tz = -420 + (Math.random() - 0.5) * 142;
     const trunk = new THREE.Mesh(trunkGeo, trunkMat);
     trunk.position.set(tx, 3, tz);
     const leaves = new THREE.Mesh(leavesGeo, leavesMat);
@@ -401,101 +467,189 @@ export function buildMetropolisCity(scene: THREE.Scene): CityData {
     cityGroup.add(leaves);
   }
 
-  // --- 6.5. WEST RIVER & METROPOLIS BAYSIDE HARBOR ---
-  const riverGeo = new THREE.PlaneGeometry(850, 2400);
+  // --- RÍO BOGOTÁ & AEROPUERTO INTERNACIONAL EL DORADO ---
+  const riverGeo = new THREE.PlaneGeometry(74, 2400);
   const riverMat = new THREE.MeshStandardMaterial({
-    color: 0x0284c7,
-    roughness: 0.12,
-    metalness: 0.85,
+    color: 0x397d91,
+    roughness: 0.26,
+    metalness: 0.42,
   });
   const riverMesh = new THREE.Mesh(riverGeo, riverMat);
   riverMesh.rotation.x = -Math.PI / 2;
-  riverMesh.position.set(-825, 0.25, 0);
+  riverMesh.position.set(-1030, 0.18, 0);
   cityGroup.add(riverMesh);
 
-  // Harbor Pier / Sea Wall
-  const seawallGeo = new THREE.BoxGeometry(20, 4, 2400);
-  const seawallMat = new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.8 });
-  const seawall = new THREE.Mesh(seawallGeo, seawallMat);
-  seawall.position.set(-390, 2, 0);
-  cityGroup.add(seawall);
+  const riverBankMat = new THREE.MeshStandardMaterial({ color: 0x526b57, roughness: 0.95 });
+  for (const bankX of [-1072, -988]) {
+    const bank = new THREE.Mesh(new THREE.BoxGeometry(8, 0.7, 2400), riverBankMat);
+    bank.position.set(bankX, 0.3, 0);
+    cityGroup.add(bank);
+  }
 
-  // --- METROPOLIS CLINTON SUSPENSION BRIDGE (CONNECTING METROPOLIS TO MAINLAND) ---
-  const bridgeGroup = new THREE.Group();
-  // Road Deck
-  const deckGeo = new THREE.BoxGeometry(650, 4, 32);
-  const deckMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.7 });
-  const bridgeDeck = new THREE.Mesh(deckGeo, deckMat);
-  bridgeDeck.position.set(-725, 18, 50);
-  bridgeDeck.receiveShadow = true;
-  bridgeGroup.add(bridgeDeck);
+  // The airport is a low, broad landmark on the western edge of the map.
+  const airportMat = new THREE.MeshStandardMaterial({ color: 0x75818a, roughness: 0.75, metalness: 0.15 });
+  addBuilding(-790, -360, 118, 68, 22, airportMat, 'Aeropuerto Internacional El Dorado', true, '#38bdf8');
+  const controlTowerMat = new THREE.MeshStandardMaterial({ color: 0xd5d0c5, roughness: 0.45, metalness: 0.2 });
+  addBuilding(-895, -410, 24, 24, 82, controlTowerMat, 'Torre de Control El Dorado', true, '#facc15');
+  const runway = new THREE.Mesh(
+    new THREE.PlaneGeometry(380, 54),
+    new THREE.MeshStandardMaterial({ color: 0x29343d, roughness: 0.88 })
+  );
+  runway.rotation.x = -Math.PI / 2;
+  runway.position.set(-790, 0.22, -485);
+  cityGroup.add(runway);
+  const runwayMarking = new THREE.Mesh(
+    new THREE.PlaneGeometry(340, 1.2),
+    new THREE.MeshBasicMaterial({ color: 0xe8e8da })
+  );
+  runwayMarking.rotation.x = -Math.PI / 2;
+  runwayMarking.position.set(-790, 0.28, -485);
+  cityGroup.add(runwayMarking);
+  for (let i = 0; i < 18; i++) {
+    const light = new THREE.Mesh(
+      new THREE.SphereGeometry(1, 6, 6),
+      new THREE.MeshBasicMaterial({ color: i % 2 ? 0x38bdf8 : 0xfacc15 })
+    );
+    light.position.set(-970 + i * 21, 0.8, -458);
+    cityGroup.add(light);
+    const oppositeLight = light.clone();
+    oppositeLight.position.z = -512;
+    cityGroup.add(oppositeLight);
+  }
 
-  // Twin Red Suspension Towers
-  const towerGeo = new THREE.BoxGeometry(10, 115, 36);
-  const towerMat = new THREE.MeshStandardMaterial({ color: 0xb91c1c, roughness: 0.5, metalness: 0.4 });
-  const tower1 = new THREE.Mesh(towerGeo, towerMat);
-  tower1.position.set(-580, 58, 50);
-  tower1.castShadow = true;
-  const tower2 = new THREE.Mesh(towerGeo, towerMat);
-  tower2.position.set(-870, 58, 50);
-  tower2.castShadow = true;
-  bridgeGroup.add(tower1);
-  bridgeGroup.add(tower2);
+  // --- TRANSMILENIO: CARRERA 10 & STATION PLATFORMS ---
+  const transitRoad = new THREE.Mesh(
+    new THREE.BoxGeometry(25, 0.45, 1500),
+    new THREE.MeshStandardMaterial({ color: 0x29343d, roughness: 0.82 })
+  );
+  transitRoad.position.set(90, 0.2, 0);
+  cityGroup.add(transitRoad);
+  const busLaneMat = new THREE.MeshStandardMaterial({ color: 0x9f2732, roughness: 0.76 });
+  for (const laneX of [84.5, 95.5]) {
+    const busLane = new THREE.Mesh(new THREE.BoxGeometry(5.2, 0.12, 1450), busLaneMat);
+    busLane.position.set(laneX, 0.48, 0);
+    cityGroup.add(busLane);
+  }
+  const transitLineMat = new THREE.MeshBasicMaterial({ color: 0xf5e8bd });
+  for (const laneX of [81.5, 98.5]) {
+    const line = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.1, 1450), transitLineMat);
+    line.position.set(laneX, 0.5, 0);
+    cityGroup.add(line);
+  }
+  const platformMat = new THREE.MeshStandardMaterial({ color: 0xcfd5d1, roughness: 0.62 });
+  const stationRoofMat = new THREE.MeshStandardMaterial({ color: 0xb91c2a, roughness: 0.48, metalness: 0.2 });
+  for (const stationZ of [-480, -160, 160, 480]) {
+    const platform = new THREE.Mesh(new THREE.BoxGeometry(15, 1.2, 56), platformMat);
+    platform.position.set(90, 1.1, stationZ);
+    cityGroup.add(platform);
+    const roof = new THREE.Mesh(new THREE.BoxGeometry(17, 1.2, 46), stationRoofMat);
+    roof.position.set(90, 7, stationZ);
+    cityGroup.add(roof);
+    for (const pillarX of [83, 97]) {
+      const pillar = new THREE.Mesh(new THREE.BoxGeometry(0.9, 5.4, 0.9), columnMat);
+      pillar.position.set(pillarX, 3.8, stationZ);
+      cityGroup.add(pillar);
+    }
+  }
 
-  // Suspension Main Cables
-  const cableGeo = new THREE.CylinderGeometry(0.5, 0.5, 300, 8);
-  cableGeo.rotateZ(Math.PI / 5.5);
-  const cableMat = new THREE.MeshBasicMaterial({ color: 0xd97706 });
-  const cable1 = new THREE.Mesh(cableGeo, cableMat);
-  cable1.position.set(-725, 68, 66);
-  const cable2 = new THREE.Mesh(cableGeo, cableMat);
-  cable2.position.set(-725, 68, 34);
-  bridgeGroup.add(cable1);
-  bridgeGroup.add(cable2);
-  cityGroup.add(bridgeGroup);
+  // --- CERROS ORIENTALES, MONSERRATE & CERRO DE GUADALUPE ---
+  const foothillMat = new THREE.MeshStandardMaterial({ color: 0x365c47, roughness: 0.98, flatShading: true });
+  const ridgeMat = new THREE.MeshStandardMaterial({ color: 0x274839, roughness: 1, flatShading: true });
+  const ridgeSpecs = [
+    { x: 1080, z: -420, radius: 310, height: 470 },
+    { x: 1120, z: -80, radius: 360, height: 560 },
+    { x: 1100, z: 310, radius: 330, height: 500 },
+  ];
+  ridgeSpecs.forEach(({ x, z, radius, height }, index) => {
+    const ridge = new THREE.Mesh(new THREE.ConeGeometry(radius, height, 9, 4), index === 1 ? ridgeMat : foothillMat);
+    ridge.position.set(x, height / 2 - 8, z);
+    ridge.scale.z = 0.72;
+    ridge.castShadow = true;
+    cityGroup.add(ridge);
+  });
 
-  // --- 6.6. ICONIC: S.T.A.R. LABS RESEARCH CAMPUS ---
+  const monserrateX = 790;
+  const monserrateZ = -110;
+  const monserrate = new THREE.Mesh(
+    new THREE.ConeGeometry(138, 370, 10, 4),
+    new THREE.MeshStandardMaterial({ color: 0x42674a, roughness: 1, flatShading: true })
+  );
+  monserrate.position.set(monserrateX, 178, monserrateZ);
+  monserrate.castShadow = true;
+  cityGroup.add(monserrate);
+  buildings.push({ x: monserrateX, z: monserrateZ, width: 2, depth: 2, height: 1, name: 'Monserrate', isIconic: true, color: '#22c55e' });
+
+  const sanctuaryMat = new THREE.MeshStandardMaterial({ color: 0xf1eee4, roughness: 0.78 });
+  const sanctuary = new THREE.Mesh(new THREE.BoxGeometry(28, 18, 40), sanctuaryMat);
+  sanctuary.position.set(monserrateX, 363, monserrateZ);
+  cityGroup.add(sanctuary);
+  const sanctuaryRoof = new THREE.Mesh(new THREE.ConeGeometry(23, 11, 4), new THREE.MeshStandardMaterial({ color: 0x9c3c32, roughness: 0.78 }));
+  sanctuaryRoof.position.set(monserrateX, 377, monserrateZ);
+  sanctuaryRoof.rotation.y = Math.PI / 4;
+  cityGroup.add(sanctuaryRoof);
+
+  const cableMat = new THREE.LineBasicMaterial({ color: 0x26343b, transparent: true, opacity: 0.85 });
+  const cablePath = new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(300, 8, monserrateZ),
+    new THREE.Vector3(520, 130, monserrateZ),
+    new THREE.Vector3(monserrateX, 348, monserrateZ),
+  ]);
+  cityGroup.add(new THREE.Line(cablePath, cableMat));
+  const cableCar = new THREE.Mesh(new THREE.BoxGeometry(10, 6, 8), new THREE.MeshStandardMaterial({ color: 0xeab308, roughness: 0.4, metalness: 0.3 }));
+  cableCar.position.set(535, 146, monserrateZ);
+  cityGroup.add(cableCar);
+
+  const guadalupeX = 880;
+  const guadalupeZ = 190;
+  const guadalupe = new THREE.Mesh(
+    new THREE.ConeGeometry(104, 290, 9, 4),
+    new THREE.MeshStandardMaterial({ color: 0x4f6846, roughness: 1, flatShading: true })
+  );
+  guadalupe.position.set(guadalupeX, 139, guadalupeZ);
+  cityGroup.add(guadalupe);
+  const cross = new THREE.Mesh(
+    new THREE.BoxGeometry(3, 30, 3),
+    new THREE.MeshStandardMaterial({ color: 0xe7e5df, metalness: 0.35, roughness: 0.55 })
+  );
+  cross.position.set(guadalupeX, 295, guadalupeZ);
+  cityGroup.add(cross);
+  const crossBar = new THREE.Mesh(new THREE.BoxGeometry(20, 3, 3), cross.material);
+  crossBar.position.set(guadalupeX, 300, guadalupeZ);
+  cityGroup.add(crossBar);
+  buildings.push({ x: guadalupeX, z: guadalupeZ, width: 2, depth: 2, height: 1, name: 'Cerro de Guadalupe', isIconic: true, color: '#84cc16' });
+
+  // --- 6.6. ICONIC: ESTADIO NEMESIO CAMACHO EL CAMPÍN ---
   const starLabsMat = new THREE.MeshStandardMaterial({
-    color: 0x0284c7,
-    roughness: 0.2,
-    metalness: 0.8,
-    emissive: 0x0369a1,
-    emissiveIntensity: 0.25,
+    color: 0x647987,
+    roughness: 0.68,
+    metalness: 0.22,
   });
-  addBuilding(320, -460, 68, 68, 110, starLabsMat, 'S.T.A.R. Labs Metropolis', true, '#38bdf8');
-  // S.T.A.R. Labs Particle Accelerator Dome & Ring
-  const domeGeo = new THREE.SphereGeometry(18, 16, 16);
-  const domeMat = new THREE.MeshStandardMaterial({ color: 0xe0f2fe, roughness: 0.2, metalness: 0.7 });
-  const starDome = new THREE.Mesh(domeGeo, domeMat);
-  starDome.position.set(320, 118, -460);
-  cityGroup.add(starDome);
-  const accelRingGeo = new THREE.TorusGeometry(36, 1.8, 8, 28);
-  const accelRingMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8 });
-  const accelRing = new THREE.Mesh(accelRingGeo, accelRingMat);
-  accelRing.rotation.x = Math.PI / 2;
-  accelRing.position.set(320, 114, -460);
-  cityGroup.add(accelRing);
+  addBuilding(260, -390, 122, 96, 34, starLabsMat, 'Estadio El Campín', true, '#38bdf8');
+  const pitch = new THREE.Mesh(new THREE.PlaneGeometry(70, 46), new THREE.MeshStandardMaterial({ color: 0x32734c, roughness: 0.96 }));
+  pitch.rotation.x = -Math.PI / 2;
+  pitch.position.set(260, 34.4, -390);
+  cityGroup.add(pitch);
+  const floodlightMat = new THREE.MeshBasicMaterial({ color: 0xfff0bd });
+  for (const [fx, fz] of [[202, -435], [318, -435], [202, -345], [318, -345]]) {
+    const mast = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.8, 48, 8), sharedAntennaMat);
+    mast.position.set(fx, 24, fz);
+    cityGroup.add(mast);
+    const lamp = new THREE.Mesh(new THREE.BoxGeometry(9, 3, 2), floodlightMat);
+    lamp.position.set(fx, 49, fz);
+    cityGroup.add(lamp);
+  }
 
-  // --- 6.7. ICONIC: WAYNE ENTERPRISES METROPOLIS TOWER ---
-  const wayneMat = new THREE.MeshStandardMaterial({
-    color: 0x09090b,
-    roughness: 0.18,
-    metalness: 0.92,
-    emissive: 0x18181b,
-  });
-  addBuilding(-260, -520, 52, 52, 195, wayneMat, 'Wayne Enterprises', true, '#71717a');
+  // --- 6.7. ICONIC: SUBESTACIÓN DE ENERGÍA DEL CENTRO ---
+  const powerMat = new THREE.MeshStandardMaterial({ color: 0x59646a, roughness: 0.76, metalness: 0.36 });
+  addBuilding(360, 540, 88, 76, 64, powerMat, 'Subestación de Energía del Centro', true, '#f59e0b');
+  const transformerMat = new THREE.MeshStandardMaterial({ color: 0xb88238, roughness: 0.68, metalness: 0.36 });
+  for (const tx of [326, 360, 394]) {
+    const transformer = new THREE.Mesh(new THREE.BoxGeometry(18, 16, 15), transformerMat);
+    transformer.position.set(tx, 8, 590);
+    cityGroup.add(transformer);
+  }
 
-  // --- 6.8. ICONIC: PLANTA DE ENERGÍA Y RED INDUSTRIAL ---
-  const powerMat = new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.7, metalness: 0.3 });
-  addBuilding(360, 540, 75, 75, 70, powerMat, 'Complejo Energético de Metrópolis', true, '#f59e0b');
-  // Cooling Tower
-  const coolingGeo = new THREE.CylinderGeometry(14, 22, 55, 18);
-  const coolingMat = new THREE.MeshStandardMaterial({ color: 0x64748b, roughness: 0.8 });
-  const coolingTower = new THREE.Mesh(coolingGeo, coolingMat);
-  coolingTower.position.set(360, 97, 540);
-  cityGroup.add(coolingTower);
-
-  // --- 7. GRID SKYSCRAPERS (QUADRUPLED METROPOLIS EXPANSION: 110+ DISTRICT BLOCKS) ---
+  // --- 7. BARRIOS, MANZANAS Y TORRES DE BOGOTÁ ---
   const blockOffsets: [number, number][] = [
     // Core Downtown
     [-60, 60], [60, 60], [-60, -60], [60, -60],
@@ -508,7 +662,7 @@ export function buildMetropolisCity(scene: THREE.Scene): CityData {
     [-260, 160], [260, -160], [-160, 240], [160, -240],
     [-60, 180], [60, -180],
 
-    // North Financial Corridor & Tech District
+    // Chapinero and the northern business corridor
     [-60, -280], [60, -280], [-160, -280], [160, -280],
     [-260, -280], [260, -280], [0, -380], [-100, -380],
     [100, -380], [-200, -380], [200, -380], [-300, -380],
@@ -517,7 +671,7 @@ export function buildMetropolisCity(scene: THREE.Scene): CityData {
     [240, -580], [-80, -680], [80, -680], [-200, -680],
     [200, -680], [0, -780], [-140, -780], [140, -780],
 
-    // East Midtown & Commercial Avenue
+    // Eastern commercial districts
     [320, 60], [320, -60], [320, 160], [320, -160],
     [420, 0], [420, 100], [420, -100], [420, 200],
     [420, -200], [520, 60], [520, -60], [520, 160],
@@ -525,7 +679,7 @@ export function buildMetropolisCity(scene: THREE.Scene): CityData {
     [620, 120], [620, -120], [620, 240], [620, -240],
     [720, 60], [720, -60], [720, 180], [720, -180],
 
-    // South Waterfront & Rail Yards
+    // Southern neighborhoods
     [-60, 280], [60, 280], [-160, 280], [160, 280],
     [-260, 280], [260, 280], [0, 380], [-120, 380],
     [120, 380], [-220, 380], [220, 380], [-320, 380],
@@ -534,7 +688,7 @@ export function buildMetropolisCity(scene: THREE.Scene): CityData {
     [-220, 580], [220, 580], [0, 680], [-140, 680],
     [140, 680], [260, 680], [-80, 780], [80, 780],
 
-    // West Coastline Avenues (Bayside Blvds)
+    // Western neighborhoods near the Río Bogotá
     [-320, 0], [-320, 100], [-320, -100], [-320, 200],
     [-320, -200], [-320, -300], [-320, 300], [-360, 60],
     [-360, -60], [-360, 160], [-360, -160], [-360, -240]
@@ -547,10 +701,10 @@ export function buildMetropolisCity(scene: THREE.Scene): CityData {
     if (Math.hypot(bx + 120, bz - 80) < 40) return;
     if (Math.hypot(bx + 80, bz + 90) < 40) return;
     if (Math.hypot(bx - 100, bz - 120) < 40) return;
-    if (Math.hypot(bx + 160, bz + 40) < 55) return; // park area
-    if (Math.hypot(bx - 320, bz + 460) < 55) return; // star labs
-    if (Math.hypot(bx + 260, bz + 520) < 50) return; // wayne ent
-    if (Math.hypot(bx - 360, bz - 540) < 55) return; // power plant
+    if (Math.hypot(bx + 250, bz + 420) < 132) return; // Parque Simón Bolívar
+    if (Math.hypot(bx - 260, bz + 390) < 100) return; // Estadio El Campín
+    if (Math.hypot(bx + 790, bz + 360) < 135) return; // Aeropuerto El Dorado
+    if (Math.hypot(bx - 360, bz - 540) < 65) return; // energy substation
 
     const height = 40 + ((index * 31) % 125);
     const width = 32 + ((index * 13) % 18);
@@ -560,7 +714,7 @@ export function buildMetropolisCity(scene: THREE.Scene): CityData {
     addBuilding(bx, bz, width, depth, height, mat);
   });
 
-  // High-performance InstancedMesh Street Lamps across Metropolis Avenues (Golden sunset ambiance)
+  // Warm Bogotá streetlights stay inexpensive through instancing.
   const lampPoleGeo = new THREE.CylinderGeometry(0.2, 0.28, 8, 6);
   const lampPoleMat = new THREE.MeshStandardMaterial({ color: 0x334155, metalness: 0.8, roughness: 0.4 });
   const bulbGeo = new THREE.SphereGeometry(0.65, 8, 8);
@@ -569,7 +723,7 @@ export function buildMetropolisCity(scene: THREE.Scene): CityData {
   const lampPositions: [number, number][] = [];
   for (let x = -560; x <= 560; x += 70) {
     for (let z = -560; z <= 560; z += 70) {
-      if (Math.hypot(x, z) < 35) continue; // Skip Daily Planet center
+      if (Math.hypot(x, z) < 35) continue; // Keep Plaza de Bolívar open
       lampPositions.push([x + 16, z + 16]);
     }
   }
@@ -592,6 +746,35 @@ export function buildMetropolisCity(scene: THREE.Scene): CityData {
   bulbInstanced.instanceMatrix.needsUpdate = true;
   cityGroup.add(poleInstanced);
   cityGroup.add(bulbInstanced);
+
+  const setTimeOfDay = (mode: TimeOfDayMode) => {
+    if (mode === 'cyber-night') {
+      matBlueGlass.emissiveIntensity = 1.05;
+      matDarkTower.emissiveIntensity = 0.85;
+      matWarmOffice.emissiveIntensity = 0.95;
+      lexCorpMat.emissiveIntensity = 0.55;
+      starLabsMat.emissiveIntensity = 0.65;
+      bulbMat.color.setHex(0x38bdf8);
+      riverMat.color.setHex(0x082f49);
+    } else if (mode === 'daylight') {
+      matBlueGlass.emissiveIntensity = 0.15;
+      matDarkTower.emissiveIntensity = 0.12;
+      matWarmOffice.emissiveIntensity = 0.15;
+      lexCorpMat.emissiveIntensity = 0.1;
+      starLabsMat.emissiveIntensity = 0.15;
+      bulbMat.color.setHex(0xe2e8f0);
+      riverMat.color.setHex(0x0ea5e9);
+    } else {
+      // Bogotá's clear high-altitude golden hour.
+      matBlueGlass.emissiveIntensity = 0.5;
+      matDarkTower.emissiveIntensity = 0.38;
+      matWarmOffice.emissiveIntensity = 0.48;
+      lexCorpMat.emissiveIntensity = 0.18;
+      starLabsMat.emissiveIntensity = 0.25;
+      bulbMat.color.setHex(0xfde047);
+      riverMat.color.setHex(0x397d91);
+    }
+  };
 
   // Building collision resolver
   const checkCollision = (px: number, py: number, pz: number, radius: number = 2.0) => {
@@ -664,10 +847,6 @@ export function buildMetropolisCity(scene: THREE.Scene): CityData {
       const dz = camZ - item.z;
       const distSq = dx * dx + dz * dz;
 
-      // Distance thresholds (squared)
-      // Close distance: < 220 units (distSq < 48400) -> Full detail (roof, antenna, full shadow)
-      // Mid distance: 220 - 450 units (distSq < 202500) -> Hide small antenna, keep main building and roof
-      // Far distance: > 450 units -> Hide tiny details, disable dynamic shadow casting on generic blocks
       if (distSq > 202500) {
         // Far away: turn off roof and antenna
         if (item.antenna) item.antenna.visible = false;
@@ -697,5 +876,6 @@ export function buildMetropolisCity(scene: THREE.Scene): CityData {
     dailyPlanetGlobe,
     checkCollision,
     updateLOD,
+    setTimeOfDay,
   };
 }

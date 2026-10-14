@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { CityBuilding, Mission, TrafficCar } from '../types/game';
-import { MapPin, ChevronDown, ChevronUp, Compass } from 'lucide-react';
+import { CityBuilding, EnemyEntity, Mission, TrafficCar } from '../types/game';
+import { ChevronUp, Compass } from 'lucide-react';
 
 interface MinimapProps {
   playerX: number;
@@ -9,6 +9,7 @@ interface MinimapProps {
   buildings: CityBuilding[];
   activeMission: Mission | null;
   trafficCars: TrafficCar[];
+  activeEnemies?: EnemyEntity[];
   altMeters: number;
 }
 
@@ -19,6 +20,7 @@ export const Minimap: React.FC<MinimapProps> = ({
   buildings,
   activeMission,
   trafficCars,
+  activeEnemies = [],
   altMeters,
 }) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
@@ -56,28 +58,61 @@ export const Minimap: React.FC<MinimapProps> = ({
     ctx.translate(center, center);
     ctx.rotate(playerRotationY);
 
-    // Draw West River / Bayside Water
-    const riverLeft = (-1200 - playerX) * zoom;
-    const riverWidth = (800) * zoom;
-    ctx.fillStyle = '#0369a1';
-    ctx.fillRect(riverLeft, (-1200 - playerZ) * zoom, riverWidth, 2400 * zoom);
-
-    // Draw grid streets across quadrupled territory
+    // Streets, the red TransMilenio corridor, the western river and the
+    // unmistakable green silhouette of the eastern hills.
     ctx.strokeStyle = '#1e293b';
     ctx.lineWidth = 1.2;
     for (let i = -840; i <= 840; i += 70) {
-      // vertical roads
       ctx.beginPath();
       ctx.moveTo((i - playerX) * zoom, (-840 - playerZ) * zoom);
       ctx.lineTo((i - playerX) * zoom, (840 - playerZ) * zoom);
       ctx.stroke();
 
-      // horizontal roads
       ctx.beginPath();
       ctx.moveTo((-840 - playerX) * zoom, (i - playerZ) * zoom);
       ctx.lineTo((840 - playerX) * zoom, (i - playerZ) * zoom);
       ctx.stroke();
     }
+
+    ctx.save();
+    ctx.fillStyle = '#345640';
+    ctx.beginPath();
+    const cerros = [
+      [640, -840], [760, -700], [720, -560], [850, -390], [735, -220],
+      [825, -70], [720, 80], [850, 260], [730, 440], [820, 640], [700, 840],
+      [1200, 840], [1200, -840],
+    ];
+    cerros.forEach(([worldX, worldZ], index) => {
+      const px = (worldX - playerX) * zoom;
+      const pz = (worldZ - playerZ) * zoom;
+      if (index === 0) ctx.moveTo(px, pz);
+      else ctx.lineTo(px, pz);
+    });
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(134, 185, 124, 0.34)';
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.moveTo((720 - playerX) * zoom, (-840 - playerZ) * zoom);
+    ctx.lineTo((880 - playerX) * zoom, (-500 - playerZ) * zoom);
+    ctx.lineTo((770 - playerX) * zoom, (-180 - playerZ) * zoom);
+    ctx.lineTo((900 - playerX) * zoom, (140 - playerZ) * zoom);
+    ctx.lineTo((760 - playerX) * zoom, (520 - playerZ) * zoom);
+    ctx.stroke();
+
+    ctx.fillStyle = '#226044';
+    ctx.fillRect((-345 - playerX) * zoom, (-505 - playerZ) * zoom, 190 * zoom, 170 * zoom);
+    ctx.restore();
+
+    // Red exclusive bus lanes identify the Carrera 10 / TransMilenio corridor.
+    ctx.strokeStyle = 'rgba(239, 68, 68, 0.72)';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.moveTo((84 - playerX) * zoom, (-760 - playerZ) * zoom);
+    ctx.lineTo((84 - playerX) * zoom, (760 - playerZ) * zoom);
+    ctx.moveTo((96 - playerX) * zoom, (-760 - playerZ) * zoom);
+    ctx.lineTo((96 - playerX) * zoom, (760 - playerZ) * zoom);
+    ctx.stroke();
 
     // Draw Buildings
     for (const b of buildings) {
@@ -86,11 +121,12 @@ export const Minimap: React.FC<MinimapProps> = ({
       const bw = b.width * zoom;
       const bd = b.depth * zoom;
 
-      // Color coding
-      if (b.name === 'Daily Planet') {
-        ctx.fillStyle = '#38bdf8';
-      } else if (b.name === 'LexCorp Tower') {
-        ctx.fillStyle = '#06b6d4';
+      if (b.name?.includes('Capitolio') || b.name?.includes('Bolívar')) {
+        ctx.fillStyle = '#facc15';
+      } else if (b.name?.includes('Colpatria')) {
+        ctx.fillStyle = '#ef4444';
+      } else if (b.name?.includes('Monserrate') || b.name?.includes('Guadalupe')) {
+        ctx.fillStyle = '#86efac';
       } else if (b.isIconic) {
         ctx.fillStyle = b.color || '#94a3b8';
       } else {
@@ -108,10 +144,37 @@ export const Minimap: React.FC<MinimapProps> = ({
       const cx = (car.x - playerX) * zoom;
       const cz = (car.z - playerZ) * zoom;
       if (Math.hypot(cx, cz) < radius + 10) {
-        ctx.fillStyle = car.type === 'police' ? '#3b82f6' : car.type === 'taxi' ? '#eab308' : '#e2e8f0';
+        ctx.fillStyle =
+          car.type === 'police'
+            ? '#3b82f6'
+            : car.type === 'taxi'
+            ? '#eab308'
+            : car.type === 'transmilenio'
+            ? '#ef4444'
+            : '#e2e8f0';
         ctx.beginPath();
         ctx.arc(cx, cz, 2.0, 0, Math.PI * 2);
         ctx.fill();
+      }
+    }
+
+    // Draw Active Enemies (Red/Orange Hostile Blips)
+    for (const enemy of activeEnemies) {
+      if (!enemy.active || enemy.health <= 0) continue;
+      const ex = (enemy.x - playerX) * zoom;
+      const ez = (enemy.z - playerZ) * zoom;
+      if (Math.hypot(ex, ez) < radius - 4) {
+        ctx.fillStyle = enemy.frozen
+          ? '#38bdf8'
+          : enemy.type === 'fire'
+          ? '#f97316'
+          : '#f43f5e';
+        ctx.beginPath();
+        ctx.arc(ex, ez, 3.2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 0.8;
+        ctx.stroke();
       }
     }
 
@@ -121,7 +184,6 @@ export const Minimap: React.FC<MinimapProps> = ({
       const mz = (activeMission.z - playerZ) * zoom;
       const distFromCenter = Math.hypot(mx, mz);
 
-      // Clamp to radar perimeter if off-screen
       let drawX = mx;
       let drawZ = mz;
       const isClamped = distFromCenter > radius - 12;
@@ -132,11 +194,9 @@ export const Minimap: React.FC<MinimapProps> = ({
         drawZ = Math.sin(angle) * (radius - 12);
       }
 
-      // Pulsing mission icon
       const pulse = 1.0 + Math.sin(Date.now() * 0.008) * 0.25;
       ctx.fillStyle = activeMission.iconColor || '#ef4444';
       ctx.beginPath();
-      // Diamond
       ctx.moveTo(drawX, drawZ - 6 * pulse);
       ctx.lineTo(drawX + 6 * pulse, drawZ);
       ctx.lineTo(drawX, drawZ + 6 * pulse);
@@ -152,7 +212,7 @@ export const Minimap: React.FC<MinimapProps> = ({
     ctx.restore(); // Undo map rotation
 
     // Draw Player Icon (Static pointing Up in center)
-    ctx.fillStyle = '#dc2626'; // Superman Red
+    ctx.fillStyle = '#dc2626';
     ctx.beginPath();
     ctx.moveTo(center, center - 7);
     ctx.lineTo(center + 5, center + 6);
@@ -160,7 +220,7 @@ export const Minimap: React.FC<MinimapProps> = ({
     ctx.lineTo(center - 5, center + 6);
     ctx.closePath();
     ctx.fill();
-    ctx.strokeStyle = '#facc15'; // Gold rim
+    ctx.strokeStyle = '#facc15';
     ctx.lineWidth = 1.5;
     ctx.stroke();
 
@@ -184,7 +244,7 @@ export const Minimap: React.FC<MinimapProps> = ({
     ctx.stroke();
 
     // North Marker 'N'
-    const northAngle = -playerRotationY;
+    const northAngle = playerRotationY;
     const nx = center + Math.sin(northAngle) * (radius - 10);
     const ny = center - Math.cos(northAngle) * (radius - 10);
     ctx.fillStyle = '#38bdf8';
@@ -192,11 +252,28 @@ export const Minimap: React.FC<MinimapProps> = ({
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText('N', nx, ny);
-  }, [playerX, playerZ, playerRotationY, buildings, activeMission, trafficCars]);
+  }, [playerX, playerZ, playerRotationY, buildings, activeMission, trafficCars, activeEnemies, altMeters]);
 
   const missionDist = activeMission
     ? Math.round(Math.hypot(activeMission.x - playerX, activeMission.z - playerZ))
     : 0;
+  const districtName = altMeters > 500
+    ? 'SOBREVOLANDO BOGOTÁ'
+    : playerX > 660
+    ? 'CERROS ORIENTALES'
+    : playerX < -660
+    ? 'AEROPUERTO EL DORADO'
+    : playerZ < -320 && playerX > 100
+    ? 'EL CAMPÍN · TEUSAQUILLO'
+    : playerZ < -320
+    ? 'PARQUE SIMÓN BOLÍVAR'
+    : playerZ < -100
+    ? 'CENTRO INTERNACIONAL'
+    : playerZ > 320
+    ? 'BOGOTÁ SUR'
+    : playerX < -150
+    ? 'LA CANDELARIA'
+    : 'PLAZA DE BOLÍVAR';
 
   return (
     <div className="relative flex flex-col items-end gap-1.5 transition-all">
@@ -205,10 +282,10 @@ export const Minimap: React.FC<MinimapProps> = ({
         <button
           onClick={() => setIsCollapsed(false)}
           className="flex items-center gap-2 px-3 py-1.5 bg-slate-950/90 hover:bg-slate-900 backdrop-blur-md rounded-xl border border-sky-500/40 shadow-xl text-sky-400 hover:text-white transition-all cursor-pointer group"
-          title="Abrir Radar de Metrópolis"
+          title="Abrir el mapa de Bogotá"
         >
           <Compass className="w-3.5 h-3.5 text-sky-400 animate-spin-slow" />
-          <span className="text-[11px] font-bold font-hud tracking-wider uppercase">RADAR</span>
+          <span className="text-[11px] font-bold font-hud tracking-wider uppercase">BOGOTÁ</span>
           <span className="text-[10px] font-mono text-slate-400 border-l border-slate-700 pl-1.5">
             {altMeters > 500 ? `ÓRBITA ${Math.round(altMeters)}m` : `${Math.round(altMeters)}m`}
           </span>
@@ -223,7 +300,7 @@ export const Minimap: React.FC<MinimapProps> = ({
           <div className="w-full flex items-center justify-between px-1.5 py-0.5 text-xs">
             <div className="flex items-center gap-1.5 text-sky-400 font-bold font-hud">
               <Compass className="w-3.5 h-3.5 text-sky-400 animate-spin-slow" />
-              <span className="text-[11px] tracking-wider uppercase">RADAR METRÓPOLIS</span>
+              <span className="text-[11px] tracking-wider uppercase">BOGOTÁ // RADAR</span>
             </div>
             <button
               onClick={() => setIsCollapsed(true)}
@@ -254,10 +331,14 @@ export const Minimap: React.FC<MinimapProps> = ({
             </div>
           </div>
 
+          <div className="w-[180px] flex items-center px-1 text-[9px] font-bold tracking-wider text-emerald-300 uppercase">
+            <span>{districtName}</span>
+          </div>
+
           {activeMission && (
             <div className="w-[180px] px-1 text-xs">
               <div className="flex items-center justify-between text-slate-300">
-                <span className="font-semibold text-rose-400 truncate max-w-[110px]">
+                <span className="font-semibold text-rose-400 truncate max-w-[115px]">
                   {activeMission.title}
                 </span>
                 <span className="font-mono tabular-nums text-slate-400 font-hud text-[11px]">

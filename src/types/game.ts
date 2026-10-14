@@ -1,5 +1,15 @@
 export type PowerType = 'heat-vision' | 'freeze-breath' | 'ground-slam' | 'x-ray';
 
+export type TimeOfDayMode = 'golden-hour' | 'daylight' | 'cyber-night';
+
+export interface LockedTargetInfo {
+  id: string;
+  type: EnemyEntity['type'];
+  health: number;
+  maxHealth: number;
+  distance: number;
+}
+
 export interface SupermanState {
   x: number;
   y: number;
@@ -25,7 +35,13 @@ export interface SupermanState {
   comboStep?: number;
 }
 
-export type MissionType = 'bank-heist' | 'skyscraper-fire' | 'car-chase' | 'lexcorp-drones';
+export type MissionType =
+  | 'bank-heist'
+  | 'skyscraper-fire'
+  | 'car-chase'
+  | 'lexcorp-drones'
+  | 'star-labs-breach'
+  | 'bridge-collapse';
 
 export interface Mission {
   id: string;
@@ -59,6 +75,7 @@ export interface EnemyEntity {
   targetZ?: number;
   frozen?: boolean;
   freezeProgress?: number;
+  hitFlashTimer?: number;
 }
 
 export interface TrafficCar {
@@ -69,10 +86,11 @@ export interface TrafficCar {
   rotationY: number;
   speed: number;
   color: string;
-  type: 'taxi' | 'police' | 'sedan' | 'truck';
+  type: 'taxi' | 'police' | 'sedan' | 'truck' | 'transmilenio';
   lane: 'north-south' | 'east-west';
   direction: 1 | -1;
   frozen?: boolean;
+  panicTimer?: number;
 }
 
 export interface CityBuilding {
@@ -96,6 +114,6 @@ export interface PerformanceMetrics {
   p95FrameTimeMs: number;
   drawCalls: number;
   triangles: number;
+  dynamicObjectsCount?: number;
   activeProfile: GraphicQualityProfile;
 }
-

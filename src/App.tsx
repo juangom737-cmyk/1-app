@@ -1,10 +1,16 @@
 import React, { useState, useCallback } from 'react';
-import { PowerType, CityBuilding, TrafficCar, Mission } from './types/game';
-import { Metropolis3DScene } from './components/Metropolis3DScene';
+import {
+  PowerType,
+  GraphicQualityProfile,
+  PerformanceMetrics,
+  TimeOfDayMode,
+} from './types/game';
+import { Metropolis3DScene, SceneStateSnapshot } from './components/Metropolis3DScene';
 import { GameHUD } from './components/GameHUD';
 import { Minimap } from './components/Minimap';
 import { TouchControls } from './components/TouchControls';
 import { InstructionsModal } from './components/InstructionsModal';
+import { PerformanceHUD } from './components/PerformanceHUD';
 import { audioService } from './services/AudioService';
 import { Shield, Play } from 'lucide-react';
 
@@ -12,28 +18,16 @@ export default function App() {
   const [gameStarted, setGameStarted] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
+  const [isPerfHudOpen, setIsPerfHudOpen] = useState(false);
+  const [graphicProfile, setGraphicProfile] = useState<GraphicQualityProfile>('radeon-optimized');
+  const [timeOfDay, setTimeOfDay] = useState<TimeOfDayMode>('golden-hour');
 
   // Player & World State from 3D Scene
-  const [playerState, setPlayerState] = useState<{
-    playerX: number;
-    playerZ: number;
-    altMeters: number;
-    speedKmh: number;
-    mach: number;
-    isFlying: boolean;
-    isSupersonic: boolean;
-    solarEnergy: number;
-    health: number;
-    buildings: CityBuilding[];
-    trafficCars: TrafficCar[];
-    activeMission: Mission | null;
-    currentMissionIndex: number;
-    allMissions: Mission[];
-    citizenDialogue?: string | null;
-  }>({
+  const [playerState, setPlayerState] = useState<SceneStateSnapshot>({
     playerX: 0,
-    playerZ: 80,
-    altMeters: 120,
+    playerZ: 110,
+    playerRotationY: 0,
+    altMeters: 22,
     speedKmh: 0,
     mach: 0,
     isFlying: true,
@@ -45,7 +39,23 @@ export default function App() {
     activeMission: null,
     currentMissionIndex: 0,
     allMissions: [],
+    activeEnemies: [],
+    isHoldingObject: false,
+    hasLockedTarget: false,
+    lockedTargetInfo: null,
+    comboStep: 0,
     citizenDialogue: null,
+    performanceMetrics: {
+      fps: 60,
+      avgFps: 60,
+      minFps: 58,
+      frameTimeMs: 16.6,
+      p95FrameTimeMs: 18.0,
+      drawCalls: 0,
+      triangles: 0,
+      dynamicObjectsCount: 0,
+      activeProfile: 'radeon-optimized',
+    },
   });
 
   const [activePower, setActivePower] = useState<PowerType | null>('heat-vision');
@@ -59,9 +69,12 @@ export default function App() {
   const [externalSupersonic, setExternalSupersonic] = useState<boolean>(false);
   const [externalPowerTrigger, setExternalPowerTrigger] = useState<PowerType | null>(null);
   const [toggleFlightTrigger, setToggleFlightTrigger] = useState<number>(0);
+  const [externalPunchTrigger, setExternalPunchTrigger] = useState<number>(0);
+  const [externalGrabTrigger, setExternalGrabTrigger] = useState<number>(0);
+  const [externalLockOnTrigger, setExternalLockOnTrigger] = useState<number>(0);
   const [missionIndexToSwitch, setMissionIndexToSwitch] = useState<number | null>(null);
 
-  const handleUpdateSceneState = useCallback((state: typeof playerState) => {
+  const handleUpdateSceneState = useCallback((state: SceneStateSnapshot) => {
     setPlayerState(state);
   }, []);
 
@@ -75,9 +88,19 @@ export default function App() {
     audioService.setMuted(next);
   };
 
+  const handleCycleTimeOfDay = useCallback(() => {
+    setTimeOfDay((prev) =>
+      prev === 'golden-hour' ? 'daylight' : prev === 'daylight' ? 'cyber-night' : 'golden-hour'
+    );
+  }, []);
+
+  const handleTogglePerfHud = useCallback(() => {
+    setIsPerfHudOpen((prev) => !prev);
+  }, []);
+
   const handleSelectPower = (power: PowerType) => {
     if (power === 'x-ray') {
-      setXrayActive(!xrayActive);
+      setXrayActive((prev) => !prev);
       return;
     }
     setActivePower(power);
@@ -93,6 +116,7 @@ export default function App() {
         setActivePower('freeze-breath');
       } else if (e.code === 'Digit3') {
         setActivePower('ground-slam');
+        setExternalGrabTrigger((prev) => prev + 1);
       }
     };
     window.addEventListener('keydown', handleGlobalKeyDown);
@@ -104,6 +128,18 @@ export default function App() {
     audioService.playPoliceDispatch();
   };
 
+  const defaultMetrics: PerformanceMetrics = playerState.performanceMetrics || {
+    fps: 60,
+    avgFps: 60,
+    minFps: 58,
+    frameTimeMs: 16.6,
+    p95FrameTimeMs: 18.0,
+    drawCalls: 0,
+    triangles: 0,
+    dynamicObjectsCount: 0,
+    activeProfile: graphicProfile,
+  };
+
   return (
     <div className="relative w-screen h-screen overflow-hidden bg-slate-950 font-sans select-none">
       {/* 3D WebGL Canvas */}
@@ -111,6 +147,11 @@ export default function App() {
         onUpdateState={handleUpdateSceneState}
         activePower={activePower}
         xrayActive={xrayActive}
+        timeOfDay={timeOfDay}
+        graphicProfile={graphicProfile}
+        onSelectGraphicProfile={setGraphicProfile}
+        onTogglePerfHud={handleTogglePerfHud}
+        onCycleTimeOfDay={handleCycleTimeOfDay}
         onMissionCompleted={handleMissionCompleted}
         externalMove={externalMove}
         externalAscend={externalAscend}
@@ -118,6 +159,9 @@ export default function App() {
         externalSupersonic={externalSupersonic}
         externalPowerTrigger={externalPowerTrigger}
         toggleFlightTrigger={toggleFlightTrigger}
+        externalPunchTrigger={externalPunchTrigger}
+        externalGrabTrigger={externalGrabTrigger}
+        externalLockOnTrigger={externalLockOnTrigger}
         missionIndexToSwitch={missionIndexToSwitch}
         onMissionSwitched={() => setMissionIndexToSwitch(null)}
       />
@@ -132,28 +176,28 @@ export default function App() {
 
             <div className="space-y-2">
               <h1 className="text-3xl sm:text-4xl font-extrabold tracking-wider text-white font-hud">
-                METROPOLIS 3D
+                BOGOTÁ 3D
               </h1>
               <p className="text-xs sm:text-sm text-sky-400 font-semibold tracking-wide uppercase">
-                Mundo Abierto de Superhéroe · Estilo GTA
+                AVENTURA DE SUPERHÉROE · BOGOTÁ ABIERTA
               </p>
               <p className="text-sm text-slate-400 max-w-md mx-auto pt-2 leading-relaxed">
-                Vuela libremente entre los rascacielos de Metrópolis, rompe la barrera del sonido, despliega visión térmica y aliento gélido, y responde a emergencias dinámicas en toda la ciudad.
+                Bogotá pierde la energía y una red de drones toma los cerros. Sigue el rastro de Los Silentes desde la Plaza de Bolívar hasta la subestación del centro: vuela sobre Monserrate, protege El Campín y decide cómo detener cada amenaza.
               </p>
             </div>
 
             <div className="grid grid-cols-3 gap-3 text-left pt-2 text-xs">
               <div className="p-3 rounded-xl bg-slate-800/60 border border-slate-700/50">
-                <span className="font-bold text-white block">Vuelo Supersónico</span>
-                <span className="text-slate-400 text-[11px]">Hasta Mach 5 en avenidas</span>
+                <span className="font-bold text-white block">Bogotá abierta</span>
+                <span className="text-slate-400 text-[11px]">Monserrate, El Campín y El Dorado</span>
               </div>
               <div className="p-3 rounded-xl bg-slate-800/60 border border-slate-700/50">
-                <span className="font-bold text-white block">Radar GTA</span>
-                <span className="text-slate-400 text-[11px]">Minimapa con alertas en vivo</span>
+                <span className="font-bold text-white block">Ruta TransMilenio</span>
+                <span className="text-slate-400 text-[11px]">Buses articulados, taxis y tráfico vivo</span>
               </div>
               <div className="p-3 rounded-xl bg-slate-800/60 border border-slate-700/50">
-                <span className="font-bold text-white block">Superpoderes</span>
-                <span className="text-slate-400 text-[11px]">Láser, Hielo y Golpe Sísmico</span>
+                <span className="font-bold text-white block">Una historia en 6 capítulos</span>
+                <span className="text-slate-400 text-[11px]">Recupera el núcleo y salva la ciudad</span>
               </div>
             </div>
 
@@ -163,7 +207,7 @@ export default function App() {
                 className="flex items-center justify-center gap-2 px-8 py-3.5 text-sm font-bold text-slate-950 bg-amber-400 hover:bg-amber-300 rounded-2xl transition-all shadow-xl shadow-amber-400/20 hover:scale-[1.02] active:scale-[0.98]"
               >
                 <Play className="w-4 h-4 fill-slate-950" />
-                <span>Patrullar Metrópolis</span>
+                <span>Defender Bogotá</span>
               </button>
 
               <button
@@ -190,28 +234,47 @@ export default function App() {
             isSupersonic={playerState.isSupersonic}
             activePower={activePower}
             xrayActive={xrayActive}
+            timeOfDay={timeOfDay}
             activeMission={playerState.activeMission}
             hopeLevel={hopeLevel}
             altMeters={playerState.altMeters}
             isMuted={isMuted}
             onToggleMute={handleToggleMute}
             onOpenHelp={() => setIsHelpOpen(true)}
+            onCycleTimeOfDay={handleCycleTimeOfDay}
+            onTogglePerfHud={handleTogglePerfHud}
             onSelectPower={handleSelectPower}
+            onTriggerPunch={() => setExternalPunchTrigger((prev) => prev + 1)}
+            onTriggerGrabOrSlam={() => setExternalGrabTrigger((prev) => prev + 1)}
+            onTriggerLockOn={() => setExternalLockOnTrigger((prev) => prev + 1)}
             onSwitchMission={(idx) => setMissionIndexToSwitch(idx)}
             missionList={playerState.allMissions}
             currentMissionIndex={playerState.currentMissionIndex}
+            isHoldingObject={playerState.isHoldingObject}
+            hasLockedTarget={playerState.hasLockedTarget}
+            lockedTargetInfo={playerState.lockedTargetInfo}
+            comboStep={playerState.comboStep}
             citizenDialogue={playerState.citizenDialogue}
             minimapNode={
               <Minimap
                 playerX={playerState.playerX}
                 playerZ={playerState.playerZ}
-                playerRotationY={0}
+                playerRotationY={playerState.playerRotationY}
                 buildings={playerState.buildings}
                 activeMission={playerState.activeMission}
                 trafficCars={playerState.trafficCars}
+                activeEnemies={playerState.activeEnemies}
                 altMeters={playerState.altMeters}
               />
             }
+          />
+
+          {/* 60 FPS Profiler & Graphics Quality Switcher (F7 / F8) */}
+          <PerformanceHUD
+            metrics={defaultMetrics}
+            onSelectProfile={setGraphicProfile}
+            isOpen={isPerfHudOpen}
+            onToggle={handleTogglePerfHud}
           />
 
           {/* Virtual Mobile Touch Controls */}
@@ -222,12 +285,21 @@ export default function App() {
             onSupersonic={(active) => setExternalSupersonic(active)}
             onTriggerPower={(power) => {
               handleSelectPower(power);
-              setExternalPowerTrigger(power);
+              if (power === 'ground-slam') {
+                setExternalGrabTrigger((prev) => prev + 1);
+              } else {
+                setExternalPowerTrigger(power);
+              }
             }}
             onReleasePower={() => setExternalPowerTrigger(null)}
             onToggleFlight={() => setToggleFlightTrigger((prev) => prev + 1)}
+            onTriggerPunch={() => setExternalPunchTrigger((prev) => prev + 1)}
+            onTriggerGrabOrSlam={() => setExternalGrabTrigger((prev) => prev + 1)}
+            onTriggerLockOn={() => setExternalLockOnTrigger((prev) => prev + 1)}
             isFlying={playerState.isFlying}
             isSupersonic={playerState.isSupersonic}
+            isHoldingObject={playerState.isHoldingObject}
+            hasLockedTarget={playerState.hasLockedTarget}
             activePower={activePower}
           />
         </>

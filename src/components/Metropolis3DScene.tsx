@@ -1,40 +1,61 @@
 import React, { useEffect, useRef } from 'react';
 import * as THREE from 'three';
-import { PowerType, CityBuilding, TrafficCar, Mission } from '../types/game';
-import { buildMetropolisCity, CityData } from '../game/CityBuilder';
+import {
+  PowerType,
+  CityBuilding,
+  TrafficCar,
+  Mission,
+  EnemyEntity,
+  LockedTargetInfo,
+  GraphicQualityProfile,
+  PerformanceMetrics,
+  TimeOfDayMode,
+} from '../types/game';
+import { buildBogotaCity, CityData } from '../game/CityBuilder';
 import { TrafficSystem } from '../game/TrafficSystem';
 import { createSupermanCharacter, SupermanMeshController } from '../game/SupermanCharacter';
 import { CrimeManager } from '../game/CrimeManager';
 import { NPCSystem } from '../game/NPCSystem';
 import { audioService } from '../services/AudioService';
-import { setupPostProcessing } from '../game/PostProcessingEffects';
+import { setupPostProcessing, PostProcessingController } from '../game/PostProcessingEffects';
 import { PhysicsEngine } from '../game/PhysicsEngine';
 import { DestructionSystem } from '../game/DestructionSystem';
 import { CombatSystem } from '../game/CombatSystem';
 
+export interface SceneStateSnapshot {
+  playerX: number;
+  playerZ: number;
+  playerRotationY: number;
+  altMeters: number;
+  speedKmh: number;
+  mach: number;
+  isFlying: boolean;
+  isSupersonic: boolean;
+  solarEnergy: number;
+  health: number;
+  buildings: CityBuilding[];
+  trafficCars: TrafficCar[];
+  activeMission: Mission | null;
+  currentMissionIndex: number;
+  allMissions: Mission[];
+  activeEnemies: EnemyEntity[];
+  isHoldingObject?: boolean;
+  hasLockedTarget?: boolean;
+  lockedTargetInfo?: LockedTargetInfo | null;
+  comboStep?: number;
+  citizenDialogue?: string | null;
+  performanceMetrics?: PerformanceMetrics;
+}
+
 interface Metropolis3DSceneProps {
-  onUpdateState: (state: {
-    playerX: number;
-    playerZ: number;
-    altMeters: number;
-    speedKmh: number;
-    mach: number;
-    isFlying: boolean;
-    isSupersonic: boolean;
-    solarEnergy: number;
-    health: number;
-    buildings: CityBuilding[];
-    trafficCars: TrafficCar[];
-    activeMission: Mission | null;
-    currentMissionIndex: number;
-    allMissions: Mission[];
-    isHoldingObject?: boolean;
-    hasLockedTarget?: boolean;
-    comboStep?: number;
-    citizenDialogue?: string | null;
-  }) => void;
+  onUpdateState: (state: SceneStateSnapshot) => void;
   activePower: PowerType | null;
   xrayActive: boolean;
+  timeOfDay: TimeOfDayMode;
+  graphicProfile: GraphicQualityProfile;
+  onSelectGraphicProfile: (profile: GraphicQualityProfile) => void;
+  onTogglePerfHud: () => void;
+  onCycleTimeOfDay: () => void;
   onMissionCompleted: (hopeGain: number) => void;
   externalMove: { dx: number; dz: number };
   externalAscend: boolean;
@@ -42,6 +63,9 @@ interface Metropolis3DSceneProps {
   externalSupersonic: boolean;
   externalPowerTrigger: PowerType | null;
   toggleFlightTrigger: number;
+  externalPunchTrigger: number;
+  externalGrabTrigger: number;
+  externalLockOnTrigger: number;
   missionIndexToSwitch: number | null;
   onMissionSwitched: () => void;
 }
@@ -50,6 +74,11 @@ export const Metropolis3DScene: React.FC<Metropolis3DSceneProps> = ({
   onUpdateState,
   activePower,
   xrayActive,
+  timeOfDay,
+  graphicProfile,
+  onSelectGraphicProfile,
+  onTogglePerfHud,
+  onCycleTimeOfDay,
   onMissionCompleted,
   externalMove,
   externalAscend,
@@ -57,6 +86,9 @@ export const Metropolis3DScene: React.FC<Metropolis3DSceneProps> = ({
   externalSupersonic,
   externalPowerTrigger,
   toggleFlightTrigger,
+  externalPunchTrigger,
+  externalGrabTrigger,
+  externalLockOnTrigger,
   missionIndexToSwitch,
   onMissionSwitched,
 }) => {
@@ -66,6 +98,10 @@ export const Metropolis3DScene: React.FC<Metropolis3DSceneProps> = ({
   const sceneRef = useRef<THREE.Scene | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
+  const postProcessingRef = useRef<PostProcessingController | null>(null);
+  const sunLightRef = useRef<THREE.DirectionalLight | null>(null);
+  const hemiLightRef = useRef<THREE.HemisphereLight | null>(null);
+  const rimLightRef = useRef<THREE.DirectionalLight | null>(null);
   const animFrameIdRef = useRef<number | null>(null);
 
   const cityDataRef = useRef<CityData | null>(null);
@@ -73,13 +109,12 @@ export const Metropolis3DScene: React.FC<Metropolis3DSceneProps> = ({
   const supermanRef = useRef<SupermanMeshController | null>(null);
   const crimeRef = useRef<CrimeManager | null>(null);
   const npcRef = useRef<NPCSystem | null>(null);
-  const punchComboRef = useRef<number>(0);
   const physicsRef = useRef<PhysicsEngine | null>(null);
   const destructionRef = useRef<DestructionSystem | null>(null);
   const combatRef = useRef<CombatSystem | null>(null);
 
   // Player physics state
-  const posRef = useRef({ x: 0, y: 120, z: 80 }); // Start flying above city
+  const posRef = useRef({ x: 0, y: 22, z: 110 }); // Begin above Plaza de Bolívar
   const velRef = useRef({ x: 0, y: 0, z: 0 });
   const rotYRef = useRef(0);
   const pitchRef = useRef(0);
@@ -95,10 +130,9 @@ export const Metropolis3DScene: React.FC<Metropolis3DSceneProps> = ({
   const isDoubleTapWActiveRef = useRef(false);
   const lastWPressTimeRef = useRef(0);
   const isDivingRef = useRef(false);
-  const currentLookAtRef = useRef(new THREE.Vector3(0, 120, 80));
+  const currentLookAtRef = useRef(new THREE.Vector3(0, 22, 110));
   const mousePosRef = useRef({ x: 0, y: 0 });
   const cameraPitchRef = useRef(0.15);
-  const cameraYawRef = useRef(0);
   const isHeroLandingRef = useRef(false);
   const heroLandingTimerRef = useRef(0);
   const cameraShakeTimerRef = useRef(0);
@@ -108,24 +142,195 @@ export const Metropolis3DScene: React.FC<Metropolis3DSceneProps> = ({
   const wallRunStrideTimerRef = useRef(0);
   const barrelRollAngleRef = useRef(0);
 
+  // Live reactive refs for props accessed inside 60fps loop
+  const activePowerRef = useRef(activePower);
+  const externalMoveRef = useRef(externalMove);
+  const externalAscendRef = useRef(externalAscend);
+  const externalDescendRef = useRef(externalDescend);
+  const externalSupersonicRef = useRef(externalSupersonic);
+  const externalPowerTriggerRef = useRef(externalPowerTrigger);
+  const graphicProfileRef = useRef<GraphicQualityProfile>(graphicProfile);
+  const timeOfDayRef = useRef<TimeOfDayMode>(timeOfDay);
+  const groundSkyColorRef = useRef(new THREE.Color(0x8fc6d7));
+
+  useEffect(() => {
+    activePowerRef.current = activePower;
+  }, [activePower]);
+  useEffect(() => {
+    externalMoveRef.current = externalMove;
+  }, [externalMove]);
+  useEffect(() => {
+    externalAscendRef.current = externalAscend;
+  }, [externalAscend]);
+  useEffect(() => {
+    externalDescendRef.current = externalDescend;
+  }, [externalDescend]);
+  useEffect(() => {
+    externalSupersonicRef.current = externalSupersonic;
+  }, [externalSupersonic]);
+  useEffect(() => {
+    externalPowerTriggerRef.current = externalPowerTrigger;
+  }, [externalPowerTrigger]);
+
   // Performance optimization pre-allocated vectors to prevent GC allocations in 60fps loop
   const tempCamTargetRef = useRef(new THREE.Vector3());
   const tempLookTargetRef = useRef(new THREE.Vector3());
   const throttleCounterRef = useRef(0);
   const xrayActiveRef = useRef(xrayActive);
 
+  // Helper: Perform Punch / Attack
+  const performPunchAction = () => {
+    const combat = combatRef.current;
+    const superman = supermanRef.current;
+    const crime = crimeRef.current;
+    if (!combat || !superman || !crime) return;
+
+    const playerVec = new THREE.Vector3(posRef.current.x, posRef.current.y, posRef.current.z);
+    const aimDir = new THREE.Vector3(
+      -Math.sin(rotYRef.current),
+      -cameraPitchRef.current * 0.5,
+      -Math.cos(rotYRef.current)
+    ).normalize();
+
+    if (combat.isHolding) {
+      combat.throwHeldObject(playerVec, aimDir, onMissionCompleted);
+      cameraShakeTimerRef.current = 0.35;
+      cameraShakeIntensityRef.current = 1.5;
+      return;
+    }
+
+    const forward = new THREE.Vector3(-Math.sin(rotYRef.current), 0, -Math.cos(rotYRef.current));
+    const attackRes = combat.executeAttack(playerVec, forward, isFlyingRef.current);
+    superman.triggerPunch(attackRes.comboStep);
+
+    // Apply Air Dash Strike impulse if locked onto a target
+    if (attackRes.targetRotY !== undefined) {
+      rotYRef.current = attackRes.targetRotY;
+    }
+    if (attackRes.dashVelocity) {
+      velRef.current.x = attackRes.dashVelocity.x;
+      velRef.current.y = attackRes.dashVelocity.y;
+      velRef.current.z = attackRes.dashVelocity.z;
+    }
+
+    const punchRes = crime.handlePunchHit(
+      posRef.current.x,
+      posRef.current.y,
+      posRef.current.z,
+      rotYRef.current,
+      attackRes.comboStep
+    );
+    if (
+      punchRes.hits > 0 ||
+      punchRes.propsHit > 0 ||
+      punchRes.iceShattered > 0 ||
+      attackRes.hitTarget
+    ) {
+      cameraShakeTimerRef.current =
+        punchRes.iceShattered > 0 || attackRes.comboStep === 3 ? 0.36 : 0.22;
+      cameraShakeIntensityRef.current =
+        punchRes.iceShattered > 0 || attackRes.comboStep === 3 ? 1.5 : 0.95;
+      if (punchRes.hits > 0 || attackRes.hitTarget) {
+        onMissionCompleted(attackRes.comboStep === 3 ? 35 : 15);
+      }
+      if (punchRes.iceShattered > 0) {
+        onMissionCompleted(punchRes.iceShattered * 25);
+      }
+    }
+    if (punchRes.missionCompleted) {
+      onMissionCompleted(30);
+    }
+  };
+
+  // Helper: Perform Grab / Throw / Ground Slam
+  const performGrabOrSlamAction = () => {
+    const combat = combatRef.current;
+    const superman = supermanRef.current;
+    const destruction = destructionRef.current;
+    const crime = crimeRef.current;
+    const traffic = trafficRef.current;
+    if (!combat || !superman || !destruction) return;
+
+    const playerVec = new THREE.Vector3(posRef.current.x, posRef.current.y, posRef.current.z);
+    const aimDir = new THREE.Vector3(
+      -Math.sin(rotYRef.current),
+      -cameraPitchRef.current * 0.5,
+      -Math.cos(rotYRef.current)
+    ).normalize();
+
+    if (combat.isHolding) {
+      combat.throwHeldObject(playerVec, aimDir, onMissionCompleted);
+      cameraShakeTimerRef.current = 0.35;
+      cameraShakeIntensityRef.current = 1.5;
+    } else {
+      const grabbed = combat.attemptGrab(playerVec);
+      if (!grabbed) {
+        audioService.playGroundSlam();
+        superman.triggerGroundSlamShockwave();
+        destruction.triggerImpact(
+          new THREE.Vector3(posRef.current.x, 0.1, posRef.current.z),
+          new THREE.Vector3(0, 1, 0),
+          75.0
+        );
+        if (traffic) {
+          traffic.triggerTrafficPanic(posRef.current.x, posRef.current.z, 32);
+        }
+        if (crime) {
+          const hits = crime.handleGroundSlamHit(posRef.current.x, posRef.current.z);
+          if (hits > 0) onMissionCompleted(hits * 10);
+        }
+      }
+    }
+  };
+
+  // Helper: Toggle Lock-On
+  const performLockOnAction = () => {
+    const combat = combatRef.current;
+    if (!combat) return;
+    const aimDir = new THREE.Vector3(
+      -Math.sin(rotYRef.current),
+      0,
+      -Math.cos(rotYRef.current)
+    );
+    combat.toggleLockOn(
+      new THREE.Vector3(posRef.current.x, posRef.current.y, posRef.current.z),
+      aimDir
+    );
+  };
+
   // Toggle flight externally
   useEffect(() => {
     if (toggleFlightTrigger > 0) {
       isFlyingRef.current = !isFlyingRef.current;
       if (!isFlyingRef.current) {
-        posRef.current.y = 1.0;
+        posRef.current.y = 0.0;
         velRef.current.y = 0;
       } else {
-        velRef.current.y = 15;
+        velRef.current.y = 18;
       }
     }
   }, [toggleFlightTrigger]);
+
+  // External Punch trigger
+  useEffect(() => {
+    if (externalPunchTrigger > 0) {
+      performPunchAction();
+    }
+  }, [externalPunchTrigger]);
+
+  // External Grab / Slam trigger
+  useEffect(() => {
+    if (externalGrabTrigger > 0) {
+      performGrabOrSlamAction();
+    }
+  }, [externalGrabTrigger]);
+
+  // External Lock-on trigger
+  useEffect(() => {
+    if (externalLockOnTrigger > 0) {
+      performLockOnAction();
+    }
+  }, [externalLockOnTrigger]);
 
   // Mission switch externally
   useEffect(() => {
@@ -134,6 +339,81 @@ export const Metropolis3DScene: React.FC<Metropolis3DSceneProps> = ({
       onMissionSwitched();
     }
   }, [missionIndexToSwitch, onMissionSwitched]);
+
+  // Apply Graphics Profile changes
+  useEffect(() => {
+    graphicProfileRef.current = graphicProfile;
+    const renderer = rendererRef.current;
+    const postProcessing = postProcessingRef.current;
+    const sunLight = sunLightRef.current;
+    if (!renderer || !postProcessing || !sunLight) return;
+
+    const profileSettings: Record<
+      GraphicQualityProfile,
+      { ratio: number; shadow: number }
+    > = {
+      'radeon-optimized': { ratio: 1.0, shadow: 1024 },
+      'balanced-30': { ratio: 0.8, shadow: 512 },
+      'ultra-fidelity': {
+        ratio: Math.min(1.5, window.devicePixelRatio || 1.25),
+        shadow: 2048,
+      },
+    };
+    const cfg = profileSettings[graphicProfile];
+    renderer.setPixelRatio(cfg.ratio);
+    postProcessing.setPixelRatio(cfg.ratio);
+    sunLight.shadow.mapSize.set(cfg.shadow, cfg.shadow);
+    sunLight.shadow.map?.dispose();
+    sunLight.shadow.map = null;
+    sunLight.shadow.needsUpdate = true;
+  }, [graphicProfile]);
+
+  // Apply Time of Day lighting changes
+  useEffect(() => {
+    timeOfDayRef.current = timeOfDay;
+    const sunLight = sunLightRef.current;
+    const hemiLight = hemiLightRef.current;
+    const rimLight = rimLightRef.current;
+    const scene = sceneRef.current;
+    const cityData = cityDataRef.current;
+    if (!sunLight || !hemiLight || !rimLight || !scene) return;
+
+    if (timeOfDay === 'cyber-night') {
+      groundSkyColorRef.current.setHex(0x050b18);
+      hemiLight.color.setHex(0x1e293b);
+      hemiLight.groundColor.setHex(0x090d16);
+      hemiLight.intensity = 0.65;
+      sunLight.color.setHex(0x38bdf8);
+      sunLight.intensity = 1.35;
+      rimLight.color.setHex(0xa855f7);
+      rimLight.intensity = 0.9;
+      if (scene.fog) (scene.fog as THREE.FogExp2).color.setHex(0x0b1528);
+    } else if (timeOfDay === 'daylight') {
+      groundSkyColorRef.current.setHex(0x0ea5e9);
+      hemiLight.color.setHex(0x7dd3fc);
+      hemiLight.groundColor.setHex(0x334155);
+      hemiLight.intensity = 1.35;
+      sunLight.color.setHex(0xfffbeb);
+      sunLight.intensity = 3.5;
+      rimLight.color.setHex(0x38bdf8);
+      rimLight.intensity = 0.65;
+      if (scene.fog) (scene.fog as THREE.FogExp2).color.setHex(0xbae6fd);
+    } else {
+      // golden-hour
+      groundSkyColorRef.current.setHex(0x8fc6d7);
+      hemiLight.color.setHex(0x9bd3e2);
+      hemiLight.groundColor.setHex(0x394d3f);
+      hemiLight.intensity = 1.3;
+      sunLight.color.setHex(0xffc080);
+      sunLight.intensity = 3.0;
+      rimLight.color.setHex(0xf4a65b);
+      rimLight.intensity = 0.72;
+      if (scene.fog) (scene.fog as THREE.FogExp2).color.setHex(0xb0cbd0);
+    }
+    if (cityData?.setTimeOfDay) {
+      cityData.setTimeOfDay(timeOfDay);
+    }
+  }, [timeOfDay]);
 
   // X-Ray Structural Scanner Effect: makes building walls translucent wireframe
   useEffect(() => {
@@ -167,14 +447,14 @@ export const Metropolis3DScene: React.FC<Metropolis3DSceneProps> = ({
     // --- THREE.JS SETUP ---
     const scene = new THREE.Scene();
     sceneRef.current = scene;
-    scene.background = new THREE.Color(0x38bdf8); // Sky blue
-    scene.fog = new THREE.FogExp2(0x93c5fd, 0.0018); // Soft atmospheric depth
+    scene.background = new THREE.Color(0x8fc6d7);
+    scene.fog = new THREE.FogExp2(0xb0cbd0, 0.00105);
 
     const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.5, 95000);
     cameraRef.current = camera;
 
     // Integrated Radeon graphics: avoid high-DPI + MSAA + bloom at the same time.
-    const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
+    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
     rendererRef.current = renderer;
     renderer.setPixelRatio(1);
     renderer.setSize(window.innerWidth, window.innerHeight);
@@ -184,13 +464,15 @@ export const Metropolis3DScene: React.FC<Metropolis3DSceneProps> = ({
 
     // --- POST-PROCESSING (Bloom for Heat Vision & Motion Blur for Supersonic) ---
     const postProcessing = setupPostProcessing(renderer, scene, camera);
+    postProcessingRef.current = postProcessing;
 
     // --- LIGHTING (Cinematic Golden Hour / Atardecer Dorado & ACES Tone Mapping) ---
-    const hemiLight = new THREE.HemisphereLight(0x38bdf8, 0x451a03, 1.15); // Twilight cyan sky, warm amber ground bounce
+    const hemiLight = new THREE.HemisphereLight(0x38bdf8, 0x451a03, 1.15);
+    hemiLightRef.current = hemiLight;
     scene.add(hemiLight);
 
-    const sunLight = new THREE.DirectionalLight(0xffa257, 3.2); // Warm golden sunset sun
-    sunLight.position.set(1600, 750, -1800); // Low grazing angle for long dramatic sunset shadows
+    const sunLight = new THREE.DirectionalLight(0xffa257, 3.2);
+    sunLight.position.set(1600, 750, -1800);
     sunLight.castShadow = true;
     sunLight.shadow.mapSize.width = 1024;
     sunLight.shadow.mapSize.height = 1024;
@@ -201,18 +483,19 @@ export const Metropolis3DScene: React.FC<Metropolis3DSceneProps> = ({
     sunLight.shadow.camera.top = 700;
     sunLight.shadow.camera.bottom = -700;
     sunLight.shadow.bias = -0.0004;
+    sunLightRef.current = sunLight;
     scene.add(sunLight);
 
-    // Warm Sunset Rim Light (accentuating building edges & superhero silhouette)
+    // Warm Sunset Rim Light
     const rimLight = new THREE.DirectionalLight(0xf59e0b, 0.85);
     rimLight.position.set(-1200, 400, 1400);
+    rimLightRef.current = rimLight;
     scene.add(rimLight);
 
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.25;
+    renderer.toneMappingExposure = 1.12;
 
     // --- CELESTIAL SPACE ELEMENTS (INFINITE SOLAR SYSTEM: EARTH, MOON, MARS, SATURN, SUN) ---
-    // 1. Cosmic Twinkling Starfield (Thousands of deep space stars)
     const starCount = 4500;
     const starGeo = new THREE.BufferGeometry();
     const starPositions = new Float32Array(starCount * 3);
@@ -249,7 +532,7 @@ export const Metropolis3DScene: React.FC<Metropolis3DSceneProps> = ({
     earthSphere.position.set(0, -14000, 0);
     scene.add(earthSphere);
 
-    // Atmospheric Limb Glow (cyan arc hugging Earth when viewed from orbit)
+    // Atmospheric Limb Glow
     const atmoGlowGeo = new THREE.RingGeometry(2400, 4200, 64);
     atmoGlowGeo.rotateX(-Math.PI / 2);
     const atmoGlowMat = new THREE.MeshBasicMaterial({
@@ -274,17 +557,16 @@ export const Metropolis3DScene: React.FC<Metropolis3DSceneProps> = ({
     });
     const moonMesh = new THREE.Mesh(moonGeo, moonMat);
     moonGroup.add(moonMesh);
-    // Crater details on the moon
     const craterGeo = new THREE.RingGeometry(24, 42, 16);
     const craterMat = new THREE.MeshBasicMaterial({ color: 0x94a3b8, side: THREE.DoubleSide });
     for (let c = 0; c < 5; c++) {
       const cr = new THREE.Mesh(craterGeo, craterMat);
-      cr.position.set((c - 2) * 60, (c % 2 === 0 ? 50 : -50), 310);
+      cr.position.set((c - 2) * 60, c % 2 === 0 ? 50 : -50, 310);
       moonGroup.add(cr);
     }
     scene.add(moonGroup);
 
-    // 4. Mars (Marte) - The Red Planet with polar ice cap
+    // 4. Mars (Marte)
     const marsGroup = new THREE.Group();
     marsGroup.position.set(9800, 8500, -11000);
     const marsGeo = new THREE.SphereGeometry(260, 32, 32);
@@ -303,7 +585,7 @@ export const Metropolis3DScene: React.FC<Metropolis3DSceneProps> = ({
     marsGroup.add(iceCap);
     scene.add(marsGroup);
 
-    // 5. Saturn with Majestic Planetary Ring System (Saturno con sus Anillos)
+    // 5. Saturn with Planetary Ring System
     const saturnGroup = new THREE.Group();
     saturnGroup.position.set(-16000, 14000, -20000);
     const saturnGeo = new THREE.SphereGeometry(680, 36, 36);
@@ -329,7 +611,7 @@ export const Metropolis3DScene: React.FC<Metropolis3DSceneProps> = ({
     saturnGroup.add(saturnRings);
     scene.add(saturnGroup);
 
-    // 6. Blazing Solar Star (Massive celestial sun)
+    // 6. Blazing Solar Star
     const sunGroup = new THREE.Group();
     sunGroup.position.set(24000, 28000, -32000);
 
@@ -363,8 +645,8 @@ export const Metropolis3DScene: React.FC<Metropolis3DSceneProps> = ({
     sunGroup.add(corona2);
     scene.add(sunGroup);
 
-    // --- BUILD METROPOLIS CITY ---
-    const cityData = buildMetropolisCity(scene);
+    // --- BUILD BOGOTÁ ---
+    const cityData = buildBogotaCity(scene);
     cityDataRef.current = cityData;
 
     // --- TRAFFIC SYSTEM ---
@@ -398,47 +680,45 @@ export const Metropolis3DScene: React.FC<Metropolis3DSceneProps> = ({
     const combat = new CombatSystem(scene, physics, destruction, crime, traffic);
     combatRef.current = combat;
 
-    // Graphics presets: F7 cycles Balanced/Performance/High. F8 toggles live stats.
-    // Deliberately keep gameplay keys and abilities untouched.
-    const graphicsProfiles = [
-      { name: 'Equilibrado', ratio: 1.0, shadow: 1024 },
-      { name: 'Rendimiento', ratio: 0.8, shadow: 512 },
-      { name: 'Alta calidad', ratio: 1.25, shadow: 2048 },
-    ] as const;
-    let currentGraphicsProfile = 0;
-    const stats = document.createElement('div');
-    stats.style.cssText = 'position:absolute;right:12px;bottom:12px;z-index:35;pointer-events:none;background:rgba(2,6,23,.82);color:#e2e8f0;padding:8px 11px;border:1px solid #475569;border-radius:8px;font:12px/1.45 monospace;white-space:pre;display:none';
-    container.appendChild(stats);
-    let statsEnabled = false;
-    let fpsFrames = 0;
-    let fpsClock = performance.now();
-    const applyGraphicsProfile = () => {
-      const profile = graphicsProfiles[currentGraphicsProfile];
-      renderer.setPixelRatio(profile.ratio);
-      postProcessing.setPixelRatio(profile.ratio);
-      sunLight.shadow.mapSize.set(profile.shadow, profile.shadow);
-      sunLight.shadow.map?.dispose();
-      sunLight.shadow.map = null;
-      sunLight.shadow.needsUpdate = true;
-      stats.textContent = `Modo: ${profile.name}`;
+    const profileOrder: GraphicQualityProfile[] = [
+      'radeon-optimized',
+      'balanced-30',
+      'ultra-fidelity',
+    ];
+
+    // Frame timing history for real-time P95, Avg & Min FPS metrics
+    const frameTimesBuffer: number[] = [];
+    let currentMetrics: PerformanceMetrics = {
+      fps: 60,
+      avgFps: 60,
+      minFps: 58,
+      frameTimeMs: 16.6,
+      p95FrameTimeMs: 18.0,
+      drawCalls: 0,
+      triangles: 0,
+      dynamicObjectsCount: 0,
+      activeProfile: graphicProfileRef.current,
     };
 
     // --- INPUT LISTENERS ---
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.code === 'F7' && !e.repeat) {
         e.preventDefault();
-        currentGraphicsProfile = (currentGraphicsProfile + 1) % graphicsProfiles.length;
-        applyGraphicsProfile();
+        const nextIdx = (profileOrder.indexOf(graphicProfileRef.current) + 1) % profileOrder.length;
+        onSelectGraphicProfile(profileOrder[nextIdx]);
         return;
       }
       if (e.code === 'F8' && !e.repeat) {
         e.preventDefault();
-        statsEnabled = !statsEnabled;
-        stats.style.display = statsEnabled ? 'block' : 'none';
-        fpsClock = performance.now();
-        fpsFrames = 0;
+        onTogglePerfHud();
         return;
       }
+      if (e.code === 'KeyT' && !e.repeat) {
+        e.preventDefault();
+        onCycleTimeOfDay();
+        return;
+      }
+
       keysRef.current[e.code] = true;
 
       // Double-tap W detection for supersonic flight / super sprint
@@ -462,10 +742,10 @@ export const Metropolis3DScene: React.FC<Metropolis3DSceneProps> = ({
       }
 
       // Toggle flight / ground mode with C or G
-      if (e.code === 'KeyC' || e.code === 'KeyG') {
+      if ((e.code === 'KeyC' || e.code === 'KeyG') && !e.repeat) {
         isFlyingRef.current = !isFlyingRef.current;
         if (!isFlyingRef.current) {
-          posRef.current.y = 1.0;
+          posRef.current.y = 0.0;
           velRef.current.y = 0;
         } else {
           velRef.current.y = 22;
@@ -473,44 +753,14 @@ export const Metropolis3DScene: React.FC<Metropolis3DSceneProps> = ({
       }
 
       // KEY Q / TAB: TARGET LOCK-ON (AERIAL & GROUND)
-      if (e.code === 'KeyQ' || e.code === 'Tab') {
+      if ((e.code === 'KeyQ' || e.code === 'Tab') && !e.repeat) {
         e.preventDefault();
-        const aimDir = new THREE.Vector3(-Math.sin(rotYRef.current), 0, -Math.cos(rotYRef.current));
-        combat.toggleLockOn(
-          new THREE.Vector3(posRef.current.x, posRef.current.y, posRef.current.z),
-          aimDir
-        );
+        performLockOnAction();
       }
 
       // KEY F: GRAB & THROW VEHICLES / ENEMIES + GROUND SLAM
-      if (e.code === 'KeyF') {
-        const playerVec = new THREE.Vector3(posRef.current.x, posRef.current.y, posRef.current.z);
-        const aimDir = new THREE.Vector3(
-          -Math.sin(rotYRef.current),
-          -cameraPitchRef.current * 0.5,
-          -Math.cos(rotYRef.current)
-        ).normalize();
-
-        if (combat.isHolding) {
-          combat.throwHeldObject(playerVec, aimDir);
-          cameraShakeTimerRef.current = 0.35;
-          cameraShakeIntensityRef.current = 1.5;
-        } else {
-          const grabbed = combat.attemptGrab(playerVec);
-          if (!grabbed) {
-            audioService.playGroundSlam();
-            superman.triggerGroundSlamShockwave();
-            destruction.triggerImpact(
-              new THREE.Vector3(posRef.current.x, 0.1, posRef.current.z),
-              new THREE.Vector3(0, 1, 0),
-              75.0
-            );
-            if (crimeRef.current) {
-              const hits = crimeRef.current.handleGroundSlamHit(posRef.current.x, posRef.current.z);
-              if (hits > 0) onMissionCompleted(hits * 10);
-            }
-          }
-        }
+      if (e.code === 'KeyF' && !e.repeat) {
+        performGrabOrSlamAction();
       }
     };
 
@@ -527,50 +777,13 @@ export const Metropolis3DScene: React.FC<Metropolis3DSceneProps> = ({
         isRightMouseDownRef.current = true;
         e.preventDefault();
       } else if (e.button === 0) {
-        // Left Mouse Button
+        // Ignore clicks on UI buttons inside header/HUD
+        const targetEl = e.target as HTMLElement | null;
+        if (targetEl && targetEl.tagName !== 'CANVAS') return;
+
         isMouseDownRef.current = true;
         mousePosRef.current = { x: e.clientX, y: e.clientY };
-
-        const playerVec = new THREE.Vector3(posRef.current.x, posRef.current.y, posRef.current.z);
-        const aimDir = new THREE.Vector3(
-          -Math.sin(rotYRef.current),
-          -cameraPitchRef.current * 0.5,
-          -Math.cos(rotYRef.current)
-        ).normalize();
-
-        if (combat.isHolding) {
-          combat.throwHeldObject(playerVec, aimDir);
-          cameraShakeTimerRef.current = 0.35;
-          cameraShakeIntensityRef.current = 1.5;
-          return;
-        }
-
-        const forward = new THREE.Vector3(-Math.sin(rotYRef.current), 0, -Math.cos(rotYRef.current));
-        const attackRes = combat.executeAttack(playerVec, forward, isFlyingRef.current);
-        superman.triggerPunch(attackRes.comboStep);
-
-        if (crimeRef.current) {
-          const punchRes = crimeRef.current.handlePunchHit(
-            posRef.current.x,
-            posRef.current.y,
-            posRef.current.z,
-            rotYRef.current,
-            attackRes.comboStep
-          );
-          if (punchRes.hits > 0 || punchRes.propsHit > 0 || punchRes.iceShattered > 0 || attackRes.hitTarget) {
-            cameraShakeTimerRef.current = punchRes.iceShattered > 0 || attackRes.comboStep === 3 ? 0.36 : 0.22;
-            cameraShakeIntensityRef.current = punchRes.iceShattered > 0 || attackRes.comboStep === 3 ? 1.5 : 0.95;
-            if (punchRes.hits > 0 || attackRes.hitTarget) {
-              onMissionCompleted(attackRes.comboStep === 3 ? 35 : 15);
-            }
-            if (punchRes.iceShattered > 0) {
-              onMissionCompleted(punchRes.iceShattered * 25);
-            }
-          }
-          if (punchRes.missionCompleted) {
-            onMissionCompleted(30);
-          }
-        }
+        performPunchAction();
       }
     };
 
@@ -583,14 +796,13 @@ export const Metropolis3DScene: React.FC<Metropolis3DSceneProps> = ({
         // Moving mouse left/right rotates Superman's heading directly
         rotYRef.current -= dx * 0.005;
 
-        // Moving mouse up/down adjusts the downward-facing pitch angle (bounded so it never looks into the sky)
+        // Moving mouse up/down adjusts the downward-facing pitch angle
         cameraPitchRef.current = Math.max(-0.35, Math.min(0.35, cameraPitchRef.current + dy * 0.003));
       }
     };
 
     const onWheel = (e: WheelEvent) => {
       if (isFlyingRef.current) {
-        // Mouse wheel scroll up ascends, scroll down descends
         velRef.current.y += e.deltaY < 0 ? 16 : -16;
       }
     };
@@ -624,8 +836,6 @@ export const Metropolis3DScene: React.FC<Metropolis3DSceneProps> = ({
     window.addEventListener('wheel', onWheel, { passive: true });
     window.addEventListener('resize', onResize);
 
-    // Cache immutable colors instead of allocating two Color instances each frame.
-    const groundSkyColor = new THREE.Color(0x38bdf8);
     const spaceSkyColor = new THREE.Color(0x010409);
 
     // --- MAIN GAME LOOP ---
@@ -633,10 +843,15 @@ export const Metropolis3DScene: React.FC<Metropolis3DSceneProps> = ({
 
     const animate = (time: number) => {
       animFrameIdRef.current = requestAnimationFrame(animate);
-      const delta = Math.min((time - lastTime) / 1000, 0.1);
+      const rawDtMs = Math.max(1, time - lastTime);
+      const delta = Math.min(rawDtMs / 1000, 0.1);
       lastTime = time;
 
-      // Spin Daily Planet Globe
+      // Track frame time buffer (last 90 frames)
+      frameTimesBuffer.push(rawDtMs);
+      if (frameTimesBuffer.length > 90) frameTimesBuffer.shift();
+
+      // Let the Colombian flag above Plaza de Bolívar catch the light.
       if (cityData.dailyPlanetGlobe) {
         cityData.dailyPlanetGlobe.rotation.y += delta * 0.4;
       }
@@ -645,40 +860,32 @@ export const Metropolis3DScene: React.FC<Metropolis3DSceneProps> = ({
       const isSupersonicTriggered =
         isRightMouseDownRef.current ||
         isDoubleTapWActiveRef.current ||
-        Boolean(externalSupersonic);
+        Boolean(externalSupersonicRef.current);
       const isSupersonicNow = isSupersonicTriggered && isFlyingRef.current;
       isSupersonicRef.current = isSupersonicNow;
 
-      // Descend / Dive: SHIFT key is FIXED for descending!
+      // Descend / Dive: SHIFT, CTRL, Z or PageDown (Q is dedicated to Lock-On, C to Toggle Flight)
       const isShiftDown = Boolean(
         keysRef.current['ShiftLeft'] ||
-        keysRef.current['ShiftRight'] ||
-        externalDescend
+          keysRef.current['ShiftRight'] ||
+          externalDescendRef.current
       );
 
       let moveForward = 0;
       let moveTurn = 0;
       let moveUp = 0;
 
-      // W / Up: Forward thrust
       if (keysRef.current['KeyW'] || keysRef.current['ArrowUp']) moveForward += 1;
-      // S / Down: Reverse / Air brake
       if (keysRef.current['KeyS'] || keysRef.current['ArrowDown']) moveForward -= 0.6;
-      // A / Left: Turn / Steer Left
       if (keysRef.current['KeyA'] || keysRef.current['ArrowLeft']) moveTurn += 1;
-      // D / Right: Turn / Steer Right
       if (keysRef.current['KeyD'] || keysRef.current['ArrowRight']) moveTurn -= 1;
 
-      // Ascend: Space bar
-      if (keysRef.current['Space'] || externalAscend) moveUp += 1;
+      if (keysRef.current['Space'] || externalAscendRef.current) moveUp += 1;
 
-      // Descend: SHIFT (fixed) or C / Ctrl / Q / Z / PageDown
       if (
         isShiftDown ||
-        keysRef.current['KeyC'] ||
         keysRef.current['ControlLeft'] ||
         keysRef.current['ControlRight'] ||
-        keysRef.current['KeyQ'] ||
         keysRef.current['KeyZ'] ||
         keysRef.current['PageDown']
       ) {
@@ -686,9 +893,9 @@ export const Metropolis3DScene: React.FC<Metropolis3DSceneProps> = ({
       }
 
       // Merge mobile virtual joystick input
-      if (externalMove.dx !== 0 || externalMove.dz !== 0) {
-        moveTurn -= externalMove.dx * 1.5;
-        moveForward -= externalMove.dz;
+      if (externalMoveRef.current.dx !== 0 || externalMoveRef.current.dz !== 0) {
+        moveTurn -= externalMoveRef.current.dx * 1.5;
+        moveForward -= externalMoveRef.current.dz;
       }
 
       // Turn Superman smoothly with A/D or touch
@@ -699,15 +906,13 @@ export const Metropolis3DScene: React.FC<Metropolis3DSceneProps> = ({
       // Banking roll when turning in flight
       pitchRef.current = THREE.MathUtils.lerp(pitchRef.current, moveTurn * 0.45, delta * 8.0);
 
-      // Dive state: actively descending while flying (Shift or moveUp < 0)
       const isDiving = isFlyingRef.current && (isShiftDown || moveUp < 0);
       isDivingRef.current = isDiving;
 
-      // Forward direction based on Superman's current heading
       const forwardDirX = -Math.sin(rotYRef.current);
       const forwardDirZ = -Math.cos(rotYRef.current);
 
-      // Speed calculations: True Super Speed & Cosmic Warp in Deep Space!
+      // Speed calculations
       const altitude = posRef.current.y;
       const isSpace = altitude > 650;
       const spaceSpeedFactor = isSpace
@@ -715,13 +920,14 @@ export const Metropolis3DScene: React.FC<Metropolis3DSceneProps> = ({
         : 1.0;
 
       const speedMultiplier = isSupersonicRef.current
-        ? (isFlyingRef.current ? 400 * spaceSpeedFactor : 92)
+        ? isFlyingRef.current
+          ? 400 * spaceSpeedFactor
+          : 92
         : isFlyingRef.current
         ? 95 * (isSpace ? Math.min(4.5, 1.0 + (altitude - 650) / 1800) : 1.0)
         : 22;
 
-      // INSTANT SUPERSONIC IMPULSE TRIGGER:
-      // No more slow progressive acceleration! Instant Mach thrust with immediate sonic boom
+      // INSTANT SUPERSONIC IMPULSE TRIGGER
       if (isSupersonicNow && !wasSupersonicLastFrameRef.current) {
         superman.triggerInstantSonicBoom();
         audioService.playInstantSonicBoom();
@@ -730,14 +936,16 @@ export const Metropolis3DScene: React.FC<Metropolis3DSceneProps> = ({
         camera.fov = 92;
         camera.updateProjectionMatrix();
 
-        // Immediately explode into Mach speed!
         velRef.current.x = forwardDirX * speedMultiplier;
         velRef.current.z = forwardDirZ * speedMultiplier;
       }
       wasSupersonicLastFrameRef.current = isSupersonicNow;
 
-      // Acrobatic Barrel Roll Maneuver during flight when pressing A/D while supersonic or fast
-      if (isFlyingRef.current && (isSupersonicNow || Math.hypot(velRef.current.x, velRef.current.z) > 40)) {
+      // Acrobatic Barrel Roll Maneuver during flight
+      if (
+        isFlyingRef.current &&
+        (isSupersonicNow || Math.hypot(velRef.current.x, velRef.current.z) > 40)
+      ) {
         if (keysRef.current['KeyA'] || keysRef.current['ArrowLeft']) {
           barrelRollAngleRef.current -= delta * Math.PI * 5.0;
         } else if (keysRef.current['KeyD'] || keysRef.current['ArrowRight']) {
@@ -755,7 +963,6 @@ export const Metropolis3DScene: React.FC<Metropolis3DSceneProps> = ({
       const targetVx = forwardDirX * targetSpeed;
       const targetVz = forwardDirZ * targetSpeed;
 
-      // Supersonic reaches target velocity instantaneously (delta * 32) instead of slow progressive ramp
       const accelRate = isSupersonicRef.current ? delta * 32.0 : delta * 6.5;
       velRef.current.x = THREE.MathUtils.lerp(velRef.current.x, targetVx, accelRate);
       velRef.current.z = THREE.MathUtils.lerp(velRef.current.z, targetVz, accelRate);
@@ -763,18 +970,18 @@ export const Metropolis3DScene: React.FC<Metropolis3DSceneProps> = ({
       // Vertical flight and descending dynamics
       if (isFlyingRef.current) {
         if (moveUp > 0) {
-          // Ascend with Space - rocket-grade acceleration scaling into cosmic space
-          const highAltBoost = posRef.current.y > 650
-            ? Math.min(12.0, 2.0 + (posRef.current.y - 650) / 1200)
-            : posRef.current.y > 250 ? 1.85 : 1.0;
+          const highAltBoost =
+            posRef.current.y > 650
+              ? Math.min(12.0, 2.0 + (posRef.current.y - 650) / 1200)
+              : posRef.current.y > 250
+              ? 1.85
+              : 1.0;
           const targetVy = (isSupersonicRef.current ? 220 : 90) * highAltBoost;
           velRef.current.y = THREE.MathUtils.lerp(velRef.current.y, targetVy, delta * 7.5);
         } else if (moveUp < 0) {
-          // DIVE DOWNWARD WITH SHIFT - Steep full dive acceleration toward the streets
           const targetVy = isSupersonicRef.current ? -320 : -160;
           velRef.current.y = THREE.MathUtils.lerp(velRef.current.y, targetVy, delta * 9.5);
         } else {
-          // Level cruise
           velRef.current.y = THREE.MathUtils.lerp(velRef.current.y, 0, delta * 6.0);
         }
       } else {
@@ -782,7 +989,7 @@ export const Metropolis3DScene: React.FC<Metropolis3DSceneProps> = ({
           isFlyingRef.current = true;
           velRef.current.y = 35;
         } else {
-          velRef.current.y = THREE.MathUtils.lerp(velRef.current.y, -30, delta * 5); // Gravity
+          velRef.current.y = THREE.MathUtils.lerp(velRef.current.y, -30, delta * 5);
         }
       }
 
@@ -791,21 +998,18 @@ export const Metropolis3DScene: React.FC<Metropolis3DSceneProps> = ({
       posRef.current.y += velRef.current.y * delta;
       posRef.current.z += velRef.current.z * delta;
 
-      // World boundary constraints: Unlocked infinite cosmos in outer space, city bounds only near ground!
       if (posRef.current.y <= 650) {
         posRef.current.x = Math.max(-1100, Math.min(1100, posRef.current.x));
         posRef.current.z = Math.max(-1100, Math.min(1100, posRef.current.z));
       }
 
-      // Ground limit and Hero Landing impact (strictly grounded at pavement y = 0.0)
+      // Ground limit and Hero Landing impact
       if (posRef.current.y <= 0.08) {
         if (velRef.current.y < -16 && !isHeroLandingRef.current) {
-          // HERO LANDING IMPACT!
           isHeroLandingRef.current = true;
           heroLandingTimerRef.current = 0.55;
           isFlyingRef.current = false;
 
-          // Ground shockwave, crater, debris and impact sound
           superman.triggerGroundSlamShockwave();
           audioService.playGroundSlam();
           destruction.triggerImpact(
@@ -813,14 +1017,13 @@ export const Metropolis3DScene: React.FC<Metropolis3DSceneProps> = ({
             new THREE.Vector3(0, 1, 0),
             Math.min(125, Math.abs(velRef.current.y) * 3.8)
           );
+          traffic.triggerTrafficPanic(posRef.current.x, posRef.current.z, 35);
 
-          // Camera shake proportional to downward velocity
           cameraShakeTimerRef.current = 0.38;
           cameraShakeIntensityRef.current = Math.min(2.5, Math.abs(velRef.current.y) * 0.05);
 
-          // Knock back or stun nearby thugs
           if (crimeRef.current) {
-            const hits = crimeRef.current.handleGroundSlamHit(posRef.current.x, posRef.current.z, 20);
+            const hits = crimeRef.current.handleGroundSlamHit(posRef.current.x, posRef.current.z, 24);
             if (hits > 0) onMissionCompleted(hits * 10);
           }
         }
@@ -828,7 +1031,6 @@ export const Metropolis3DScene: React.FC<Metropolis3DSceneProps> = ({
         velRef.current.y = 0;
       }
 
-      // Update hero landing and camera shake timers
       if (heroLandingTimerRef.current > 0) {
         heroLandingTimerRef.current -= delta;
         if (heroLandingTimerRef.current <= 0) {
@@ -843,23 +1045,27 @@ export const Metropolis3DScene: React.FC<Metropolis3DSceneProps> = ({
       // Atmospheric & Outer Space Sky Transition
       const alt = posRef.current.y;
       const spaceFactor = THREE.MathUtils.clamp((alt - 180) / 550, 0, 1);
-      (scene.background as THREE.Color).lerpColors(groundSkyColor, spaceSkyColor, spaceFactor);
+      (scene.background as THREE.Color).lerpColors(
+        groundSkyColorRef.current,
+        spaceSkyColor,
+        spaceFactor
+      );
 
       if (scene.fog) {
-        (scene.fog as THREE.FogExp2).density = THREE.MathUtils.lerp(0.0018, 0.000008, spaceFactor);
+        (scene.fog as THREE.FogExp2).density = THREE.MathUtils.lerp(0.00105, 0.000008, spaceFactor);
       }
 
-      starMat.opacity = spaceFactor * 0.95;
+      const nightStarBoost = timeOfDayRef.current === 'cyber-night' ? 0.55 : 0.0;
+      starMat.opacity = Math.max(nightStarBoost, spaceFactor * 0.95);
       atmoGlowMat.opacity = spaceFactor * 0.75;
       corona1Mat.opacity = 0.5 + spaceFactor * 0.45;
 
-      // Celestial Bodies subtle cosmic orbital rotations
       earthSphere.rotation.y += delta * 0.002;
       moonGroup.rotation.y += delta * 0.006;
       marsGroup.rotation.y += delta * 0.005;
       saturnGroup.rotation.y += delta * 0.007;
 
-      // Building Collision detection & Spider-Man Vertical Wall Running / Rooftop Catapult Vault!
+      // Building Collision detection & Vertical Wall Running / Rooftop Catapult Vault
       if (posRef.current.y < 280) {
         const col = cityData.checkCollision(posRef.current.x, posRef.current.y, posRef.current.z, 2.0);
         if (col.hit) {
@@ -867,43 +1073,36 @@ export const Metropolis3DScene: React.FC<Metropolis3DSceneProps> = ({
           posRef.current.z += col.pushZ * 1.05;
 
           const bHeight = col.buildingHeight || 65;
-          // When moving toward facade with forward intent:
           const isPushingAgainstWall =
             (moveForward > 0 || Math.hypot(velRef.current.x, velRef.current.z) > 8) &&
             posRef.current.y < bHeight - 1.0;
 
           if (isPushingAgainstWall) {
-            // SPIDER-MAN VERTICAL WALL RUN MODE:
-            // Sprints straight UP the building facade at high superhero speed!
             isWallRunningRef.current = true;
             isFlyingRef.current = false;
 
             velRef.current.y = 52;
             posRef.current.y += 52 * delta;
 
-            // Rhythmic wall running strides audio
             wallRunStrideTimerRef.current += delta;
             if (wallRunStrideTimerRef.current > 0.12) {
               wallRunStrideTimerRef.current = 0;
               audioService.playWallRunStride();
             }
 
-            // CINEMATIC ROOFTOP CATAPULT VAULT:
-            // When reaching the roof lip, catapult into the sky with an acrobatic superhero leap!
             if (posRef.current.y >= bHeight - 2.0) {
               posRef.current.y = bHeight + 2.5;
-              velRef.current.y = 44; // Rocket spring into the clouds
-              velRef.current.x = forwardDirX * 52; // Forward vault leap
+              velRef.current.y = 44;
+              velRef.current.x = forwardDirX * 52;
               velRef.current.z = forwardDirZ * 52;
               isFlyingRef.current = true;
               isWallRunningRef.current = false;
               cameraShakeTimerRef.current = 0.28;
               cameraShakeIntensityRef.current = 1.3;
-              onMissionCompleted(15); // Style bonus for acrobatic parkour vault!
+              onMissionCompleted(15);
             }
           } else {
             isWallRunningRef.current = false;
-            // Wall deflection: project velocity along the wall surface to glide smoothly
             const dot = velRef.current.x * col.normalX + velRef.current.z * col.normalZ;
             if (dot < 0) {
               const impactSpeed = Math.abs(dot);
@@ -934,43 +1133,42 @@ export const Metropolis3DScene: React.FC<Metropolis3DSceneProps> = ({
       const horizontalSpeed = Math.hypot(velRef.current.x, velRef.current.z);
       const totalSpeed = Math.hypot(horizontalSpeed, velRef.current.y);
       const speedKmh = totalSpeed * 3.6;
-      // Real Mach representation: Mach 1 is 1235 km/h. At supersonic speeds, registers Mach 1.2 to 5.5+
       const mach = isSupersonicRef.current
         ? Math.max(1.2, speedKmh / 320)
         : speedKmh > 320
         ? speedKmh / 320
         : 0;
 
-      // Wind sound
       audioService.updateWindSound(totalSpeed / 160, isSupersonicRef.current);
 
-      // Solar energy recharge under yellow sunlight
+      // Solar energy recharge
       const isSolarCharging = posRef.current.y > 550;
       if (isSolarCharging) {
-        // Direct, unfiltered solar radiation in upper thermosphere / orbital space!
         solarEnergyRef.current = Math.min(100, solarEnergyRef.current + delta * 28);
         healthRef.current = Math.min(100, healthRef.current + delta * 15);
       } else if (posRef.current.y > 80) {
-        solarEnergyRef.current = Math.min(100, solarEnergyRef.current + delta * 1.5);
+        solarEnergyRef.current = Math.min(100, solarEnergyRef.current + delta * 1.8);
+      } else {
+        solarEnergyRef.current = Math.min(100, solarEnergyRef.current + delta * 0.6);
       }
 
-      // Sonic boom trigger when breaking Mach
       if (isSupersonicRef.current && speedKmh > 400 && Math.random() < 0.015) {
         audioService.playSonicBoom();
       }
 
-      // Power triggers
+      // Power triggers (respecting solar energy > 0)
+      const hasSolar = solarEnergyRef.current > 0.5;
       const isFiringHeat =
-        Boolean(keysRef.current['KeyR']) ||
-        Boolean(keysRef.current['Digit1']) ||
-        externalPowerTrigger === 'heat-vision' ||
-        (activePower === 'heat-vision' && Boolean(keysRef.current['KeyR']));
+        hasSolar &&
+        (Boolean(keysRef.current['KeyR']) ||
+          Boolean(keysRef.current['Digit1']) ||
+          externalPowerTriggerRef.current === 'heat-vision');
 
       const isFiringFreeze =
-        Boolean(keysRef.current['KeyE']) ||
-        Boolean(keysRef.current['Digit2']) ||
-        externalPowerTrigger === 'freeze-breath' ||
-        (activePower === 'freeze-breath' && Boolean(keysRef.current['KeyE']));
+        hasSolar &&
+        (Boolean(keysRef.current['KeyE']) ||
+          Boolean(keysRef.current['Digit2']) ||
+          externalPowerTriggerRef.current === 'freeze-breath');
 
       if (isFiringHeat) {
         audioService.startHeatVision();
@@ -994,16 +1192,12 @@ export const Metropolis3DScene: React.FC<Metropolis3DSceneProps> = ({
         -cameraPitchRef.current * 0.5,
         -Math.cos(rotYRef.current)
       ).normalize();
+      const playerVec = new THREE.Vector3(posRef.current.x, posRef.current.y, posRef.current.z);
       if (combatRef.current) {
-        combatRef.current.update(
-          delta,
-          new THREE.Vector3(posRef.current.x, posRef.current.y, posRef.current.z),
-          rotYRef.current,
-          aimDir
-        );
+        combatRef.current.update(delta, playerVec, rotYRef.current, aimDir);
       }
 
-      // Update Superman mesh pose and position with locomotion, dive, and landing states
+      // Update Superman mesh pose and position
       superman.group.position.set(posRef.current.x, posRef.current.y, posRef.current.z);
       superman.group.rotation.y = rotYRef.current + Math.PI;
       superman.group.rotation.z = isFlyingRef.current ? pitchRef.current : 0;
@@ -1053,14 +1247,15 @@ export const Metropolis3DScene: React.FC<Metropolis3DSceneProps> = ({
         posRef.current.z,
         isFiringHeat,
         isFiringFreeze,
-        activePower
+        activePowerRef.current,
+        rotYRef.current
       );
 
       if (crimeRes.missionCompleted) {
         onMissionCompleted(crime.getActiveMission().rewardHope);
       }
 
-      // Camera Framing: AAA Cinematic Third-Person Framing (Over-the-Shoulder & Anti-Occlusion)
+      // Camera Framing: AAA Cinematic Third-Person Framing
       const isCosmos = posRef.current.y > 800;
       const camDist = isCosmos
         ? 19.5
@@ -1077,17 +1272,14 @@ export const Metropolis3DScene: React.FC<Metropolis3DSceneProps> = ({
         ? 4.6
         : 1.85;
 
-      // Over-the-shoulder subtle lateral camera offset for cinematic AAA presence
-      const shoulderOffset = (isFlyingRef.current || isCosmos) ? 0.0 : 0.42;
+      const shoulderOffset = isFlyingRef.current || isCosmos ? 0.0 : 0.42;
       const rightX = Math.cos(rotYRef.current) * shoulderOffset;
       const rightZ = -Math.sin(rotYRef.current) * shoulderOffset;
 
-      // Position camera directly behind Superman's facing angle with shoulder offset
       let targetCamX = posRef.current.x + Math.sin(rotYRef.current) * camDist + rightX;
       let targetCamZ = posRef.current.z + Math.cos(rotYRef.current) * camDist + rightZ;
       let targetCamY = posRef.current.y + camElevation;
 
-      // Building Occlusion Avoidance: prevent skyscrapers from blocking camera line-of-sight
       if (cityData.checkCollision && !isCosmos) {
         const camCol = cityData.checkCollision(targetCamX, targetCamY, targetCamZ, 1.2);
         if (camCol.hit) {
@@ -1097,19 +1289,20 @@ export const Metropolis3DScene: React.FC<Metropolis3DSceneProps> = ({
         }
       }
 
-      // Look Target: Locked Target (if lock-on active) or Ahead of Superman
       const lookAheadDist = isSupersonicRef.current ? 22.0 : 15.0;
       let lookTargetX = posRef.current.x - Math.sin(rotYRef.current) * lookAheadDist;
       let lookTargetZ = posRef.current.z - Math.cos(rotYRef.current) * lookAheadDist;
-      let lookTargetY = posRef.current.y + (isFlyingRef.current ? (isDiving ? -9.5 : -0.5) : 1.45) - cameraPitchRef.current * 5.5;
+      let lookTargetY =
+        posRef.current.y +
+        (isFlyingRef.current ? (isDiving ? -9.5 : -0.5) : 1.45) -
+        cameraPitchRef.current * 5.5;
 
       if (combatRef.current?.isLockOnActive && combatRef.current?.lockedTarget) {
         lookTargetX = combatRef.current.lockedTarget.x;
-        lookTargetY = combatRef.current.lockedTarget.y;
+        lookTargetY = combatRef.current.lockedTarget.y + 1.0;
         lookTargetZ = combatRef.current.lockedTarget.z;
       }
 
-      // Camera shake during supersonic sonic boom or hero landing impact
       if (cameraShakeTimerRef.current > 0) {
         const shake = cameraShakeIntensityRef.current * (cameraShakeTimerRef.current / 0.35);
         targetCamX += (Math.random() - 0.5) * shake;
@@ -1117,14 +1310,13 @@ export const Metropolis3DScene: React.FC<Metropolis3DSceneProps> = ({
         targetCamZ += (Math.random() - 0.5) * shake;
       }
 
-      // Pre-allocated vectors for smooth GC-free interpolation
       tempCamTargetRef.current.set(targetCamX, targetCamY, targetCamZ);
       tempLookTargetRef.current.set(lookTargetX, lookTargetY, lookTargetZ);
       camera.position.lerp(tempCamTargetRef.current, delta * 10.0);
       currentLookAtRef.current.lerp(tempLookTargetRef.current, delta * 12.0);
       camera.lookAt(currentLookAtRef.current);
 
-      // Dynamic FOV for hypersonic tunnel sensation
+      // Dynamic FOV
       const targetFOV = isSupersonicRef.current ? 86 : isFlyingRef.current ? 68 : 60;
       const newFov = THREE.MathUtils.lerp(camera.fov, targetFOV, delta * 5);
       if (Math.abs(newFov - camera.fov) > 0.002) {
@@ -1132,34 +1324,42 @@ export const Metropolis3DScene: React.FC<Metropolis3DSceneProps> = ({
         camera.updateProjectionMatrix();
       }
 
-      // Dynamic LOD & Skyscraper Culling based on camera position
-      // LOD checks need not run 60 times per second for static buildings.
+      // Dynamic LOD & Skyscraper Culling
       if (cityData.updateLOD && throttleCounterRef.current % 6 === 0) {
         cityData.updateLOD(camera.position);
       }
 
-      // Bloom is enabled only for heat vision; motion blur only for supersonic flight.
       postProcessing.update(delta, isFiringHeat, isSupersonicRef.current, mach);
       postProcessing.render();
 
-      // Built-in performance diagnostics, refreshed twice per second.
-      if (statsEnabled) {
-        fpsFrames++;
-        if (time - fpsClock >= 500) {
-          const fps = Math.round((fpsFrames * 1000) / (time - fpsClock));
-          const info = renderer.info.render;
-          stats.textContent = `Modo: ${graphicsProfiles[currentGraphicsProfile].name} | F7 cambiar | F8 ocultar\nFPS: ${fps} | Draw calls: ${info.calls} | Triángulos: ${info.triangles.toLocaleString('es-CO')}\nObjetos físicos: ${physics.getDynamicObjectsCount()}`;
-          fpsFrames = 0;
-          fpsClock = time;
-        }
-      }
-
-      // React HUD/minimap at ~10 Hz; 3D physics and camera still run every frame.
+      // React HUD/minimap/profiler update at ~10 Hz
       throttleCounterRef.current++;
       if (throttleCounterRef.current % 6 === 0) {
+        if (frameTimesBuffer.length > 0) {
+          const sumMs = frameTimesBuffer.reduce((acc, v) => acc + v, 0);
+          const avgMs = sumMs / frameTimesBuffer.length;
+          const sorted = [...frameTimesBuffer].sort((a, b) => a - b);
+          const p95Ms = sorted[Math.floor(sorted.length * 0.95)] || avgMs;
+          const maxMs = sorted[sorted.length - 1] || avgMs;
+          const info = renderer.info.render;
+
+          currentMetrics = {
+            fps: Math.min(120, Math.round(1000 / Math.max(1, rawDtMs))),
+            avgFps: Math.min(120, Math.round(1000 / Math.max(1, avgMs))),
+            minFps: Math.min(120, Math.round(1000 / Math.max(1, maxMs))),
+            frameTimeMs: avgMs,
+            p95FrameTimeMs: p95Ms,
+            drawCalls: info.calls,
+            triangles: info.triangles,
+            dynamicObjectsCount: physics.getDynamicObjectsCount(),
+            activeProfile: graphicProfileRef.current,
+          };
+        }
+
         onUpdateState({
           playerX: posRef.current.x,
           playerZ: posRef.current.z,
+          playerRotationY: rotYRef.current,
           altMeters: posRef.current.y,
           speedKmh,
           mach,
@@ -1172,10 +1372,13 @@ export const Metropolis3DScene: React.FC<Metropolis3DSceneProps> = ({
           activeMission: crime.getActiveMission(),
           currentMissionIndex: crime.activeMissionIndex,
           allMissions: crime.missions,
+          activeEnemies: crime.getEnemies(),
           isHoldingObject: combatRef.current?.isHolding,
           hasLockedTarget: combatRef.current?.isLockOnActive,
+          lockedTargetInfo: combatRef.current?.getLockedTargetInfo(playerVec),
           comboStep: combatRef.current?.getComboStep(),
           citizenDialogue: npcs.getActiveDialogue(),
+          performanceMetrics: currentMetrics,
         });
       }
     };
@@ -1198,7 +1401,9 @@ export const Metropolis3DScene: React.FC<Metropolis3DSceneProps> = ({
         container.removeChild(renderer.domElement);
       }
       npcs.dispose();
-      stats.remove();
+      crime.dispose();
+      destruction.dispose();
+      physics.dispose();
       postProcessing.dispose();
       renderer.dispose();
     };

@@ -1,33 +1,38 @@
-# Metrópolis 3D — Versión Mejorada y Optimizada al 100%
+# Bogotá 3D — mejoras de mapa, historia y presentación
 
-Esta versión integra todas las mejoras de rendimiento (60 FPS), física de destrucción con **Rapier 3D**, combate aéreo tridimensional con **Air Dash Strike**, ciclo atmosférico en tiempo real y telemetría completa en el HUD.
+Esta entrega transforma el escenario genérico de Metrópolis en una Bogotá estilizada y jugable, conserva los sistemas de vuelo y combate existentes y añade una campaña de seis capítulos.
 
-## 1. Correcciones Críticas y Mejoras de Jugabilidad
+## Mundo y referencias de Bogotá
 
-- **Alineación Real de Golpes y Poderes (`CrimeManager.ts` / `SupermanCharacter.ts`)**:
-  - Se corrigió el vector de dirección frontal en `handlePunchHit` (`-Math.sin(rotY), -Math.cos(rotY)`), garantizando que los puñetazos y ondas de impacto golpeen y empujen hacia adelante a los enemigos y objetos urbanos frente a Superman.
-  - Se corrigió el anclaje espacial de la **Visión Térmica** y el **Aliento Gélido** en `SupermanCharacter.ts` para que ambos poderes nazcan exactamente desde los ojos y la boca de Superman orientados hacia el frente tanto en tierra como en vuelo horizontal y picado.
-  - Se añadió recuperación automática del destello térmico/impacto (`hitFlashTimer`) sobre las mallas de enemigos para evitar que queden blancos permanentemente.
-- **Combate Aéreo Lock-On y Air Dash Strike (`CombatSystem.ts`)**:
-  - Al fijar un objetivo con **Q / Tab** y atacar con **Clic Izquierdo**, Superman realiza un desplazamiento supersónico (*Air Dash Strike*) directo hacia el enemigo u objetivo aéreo, encadenando hasta 4 golpes y rematando con un *Meteor Slam* contra el asfalto.
-  - Si un enemigo fijado cae derrotado, el sistema cambia automáticamente al siguiente objetivo activo de la emergencia.
-- **Física de Lanzamiento de Vehículos y Explosiones en Área (`PhysicsEngine.ts` / `CombatSystem.ts`)**:
-  - Se mejoró la detección de colisiones de vehículos lanzados con **Rapier 3D** para detectar impactos tanto contra el pavimento como contra fachadas de rascacielos (por desaceleración brusca).
-  - Al impactar, el vehículo detona una onda expansiva que daña o destruye enemigos en un radio de 24 metros, hace estallar estatuas de hielo y activa el frenado de emergencia en el tráfico cercano (`triggerTrafficPanic`).
-  - Los vehículos retirados del tráfico se reponen automáticamente en las avenidas para mantener la ciudad viva.
-- **6 Emergencias Dinámicas en Toda Metrópolis (`CrimeManager.ts`)**:
-  - Se amplió el sistema de misiones a 6 emergencias distribuidas por todos los distritos: *Banco Central*, *Torre LexCorp*, *Daily Planet*, *Avenida Centenario*, *Campus S.T.A.R. Labs* y *Puente Colgante Clinton*, con reinicio automático al rejugarlas.
+- Plaza de Bolívar y Capitolio Nacional: plaza de piedra, pórtico, cúpula y bandera colombiana animada.
+- Torre Colpatria: rascacielos del Centro Internacional con bandas rojas y helipuerto.
+- Cerros Orientales: relieve facetado, Monserrate, Santuario, Guadalupe y cabina de teleférico.
+- Parque Metropolitano Simón Bolívar, Estadio El Campín y Aeropuerto El Dorado.
+- Río Bogotá, corredor rojo de TransMilenio y estaciones con cubiertas.
+- Buses articulados, taxis amarillos y tráfico urbano en movimiento.
 
-## 2. Mejoras de Interfaz, Radar y Rendimiento (60 FPS)
+El mapa es una composición inspirada en Bogotá, no un mapa geográfico exacto ni una simulación de tráfico real.
 
-- **Radar Estilo GTA Sincronizado (`Minimap.tsx`)**:
-  - Se conectó el ángulo real de orientación de Superman (`playerRotationY`) al minimapa para que gire suavemente con la cámara.
-  - Se añadieron indicadores en tiempo real para los **enemigos activos** (puntos rojos/naranjas y celestes cuando están congelados) además del tráfico y los edificios icónicos.
-- **Profiler 60 FPS Interactivo (`PerformanceHUD.tsx` + `F7` / `F8`)**:
-  - Se integró el componente `PerformanceHUD` con métricas en vivo de **FPS actuales, promedio y mínimos**, **latencia media y P95 en ms**, **Draw Calls**, **Triángulos** y **cuerpos físicos activos de Rapier 3D**.
-  - Permite alternar con clic o con **F7** entre tres perfiles: **Equilibrado Radeon (60 FPS)**, **Modo Rendimiento (Turbo)** y **Alta Calidad Ultra**.
-- **Ciclo Atmosférico en Tiempo Real (`Tecla T` / Botón en HUD)**:
-  - Permite alternar instantáneamente entre **Atardecer Dorado**, **Día Solar** y **Noche Cyberpunk** (encendiendo los letreros de neón, las ventanas emisivas de los rascacielos y el campo estelar).
-- **Controles Táctiles y de Escritorio Completos (`GameHUD.tsx` / `TouchControls.tsx`)**:
-  - Se separaron los atajos para evitar conflictos: **Q / Tab** exclusivo para *Lock-On*, **C / G** para alternar modo vuelo/tierra, **F / 3** para agarrar/lanzar o golpe sísmico, y **Shift / Ctrl / Z** para descenso rápido.
-  - Se añadieron botones táctiles en móviles para **Golpe**, **Agarrar/Lanzar** y **Fijar Blanco**.
+## Campaña: «La noche del apagón»
+
+Los Silentes sustraen un núcleo experimental del Banco de la República. Las seis misiones enlazan el Centro Histórico, la Torre Colpatria, Monserrate, la Caracas, El Campín y una subestación. La tarjeta de misión presenta el contexto, el lugar y el objetivo para que cada encuentro se entienda dentro de la historia.
+
+## Presentación y navegación
+
+- Textura de calles y avenidas sobre el terreno, paleta de atardecer altoandino, antialiasing y niebla más gradual.
+- Hitos legibles desde el minimapa y relieve verde al oriente.
+- El radar identifica barrios aproximados, cerros, Parque Simón Bolívar, El Dorado y el corredor de TransMilenio.
+- Superman inicia sobre la Plaza de Bolívar; la historia arranca dentro del mapa.
+
+## Rendimiento
+
+El perfil Radeon mantiene resolución y sombras moderadas para equipos integrados. Los modos de rendimiento y Ultra siguen disponibles con F7; Ultra aumenta la resolución de render y el mapa de sombras. F8 abre FPS, latencia y contadores de escena.
+
+## Ejecutar localmente
+
+```bash
+npm install
+npm run dev
+```
+
+El escenario usa geometría procedural de Three.js y no necesita descargar paquetes de mapas ni imágenes externas.
