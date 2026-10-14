@@ -8,6 +8,7 @@ export interface DynamicPhysicsObject {
   mesh: THREE.Object3D;
   life: number;
   maxLife: number;
+  prevSpeed?: number;
   isCar?: boolean;
   isDebris?: boolean;
   isEnemy?: boolean;
@@ -19,17 +20,23 @@ export class PhysicsEngine {
   public rapier: typeof RAPIER | null = null;
   public world: RAPIER.World | null = null;
   public isReady: boolean = false;
+  private playerController: RAPIER.KinematicCharacterController | null = null;
+  private playerCollider: RAPIER.Collider | null = null;
+  private playerColliderOffset = 0.9;
+  private physicsAccumulator = 0;
 
   private scene: THREE.Scene;
   private dynamicObjects: Map<string, DynamicPhysicsObject> = new Map();
   private debrisGroup: THREE.Group;
   private maxDebrisCount: number = 75;
   private debrisPool: DynamicPhysicsObject[] = [];
+  private sharedShardGeo: THREE.DodecahedronGeometry;
 
   constructor(scene: THREE.Scene) {
     this.scene = scene;
     this.debrisGroup = new THREE.Group();
     this.scene.add(this.debrisGroup);
+    this.sharedShardGeo = new THREE.DodecahedronGeometry(0.85, 0);
     PhysicsEngine.instance = this;
   }
 
@@ -84,6 +91,74 @@ export class PhysicsEngine {
     return this.world.createCollider(colliderDesc);
   }
 
+  /** Uses the actual faceted terrain mesh as a static convex obstacle. */
+  public addTerrainCollider(mesh: THREE.Mesh): RAPIER.Collider | null {
+    if (!this.world || !this.rapier) return null;
+    const positions = mesh.geometry.getAttribute('position');
+    if (!positions || positions.count < 4) return null;
+    mesh.updateWorldMatrix(true, false);
+    const vertices = new Float32Array(positions.count * 3);
+    const point = new THREE.Vector3();
+    for (let i = 0; i < positions.count; i++) {
+      point.set(positions.getX(i), positions.getY(i), positions.getZ(i)).applyMatrix4(mesh.matrixWorld);
+      vertices[i * 3] = point.x;
+      vertices[i * 3 + 1] = point.y;
+      vertices[i * 3 + 2] = point.z;
+    }
+    const collider = this.rapier.ColliderDesc.convexHull(vertices);
+    if (!collider) return null;
+    collider.setFriction(0.9).setRestitution(0);
+    return this.world.createCollider(collider);
+  }
+
+  /** Creates the hero capsule and Rapier move-and-slide controller after the city colliders are registered. */
+  public addPlayerController(): boolean {
+    if (!this.world || !this.rapier || this.playerCollider) return Boolean(this.playerCollider);
+
+    // Flush the newly added static colliders into Rapier's broad phase before
+    // the first character shape-cast. The world may otherwise have no dynamic
+    // objects yet and therefore would not have stepped.
+    this.world.step();
+    this.playerController = this.world.createCharacterController(0.06);
+    this.playerController.setMaxSlopeClimbAngle((48 * Math.PI) / 180);
+    this.playerController.setMinSlopeSlideAngle((32 * Math.PI) / 180);
+    this.playerController.enableAutostep(0.35, 0.18, true);
+    this.playerController.enableSnapToGround(0.25);
+    const capsule = this.rapier.ColliderDesc.capsule(0.55, 0.38)
+      .setTranslation(0, this.playerColliderOffset, 0)
+      .setFriction(0.8)
+      .setRestitution(0);
+    this.playerCollider = this.world.createCollider(capsule);
+    return true;
+  }
+
+  /** Returns Rapier's swept, collision-corrected movement for the hero's feet position. */
+  public movePlayer(
+    feet: THREE.Vector3,
+    desiredDelta: THREE.Vector3
+  ): { delta: THREE.Vector3; grounded: boolean; hit: boolean } | null {
+    if (!this.world || !this.playerController || !this.playerCollider) return null;
+
+    this.playerCollider.setTranslation({ x: feet.x, y: feet.y + this.playerColliderOffset, z: feet.z });
+    this.playerController.computeColliderMovement(this.playerCollider, {
+      x: desiredDelta.x,
+      y: desiredDelta.y,
+      z: desiredDelta.z,
+    });
+    const movement = this.playerController.computedMovement();
+    const corrected = new THREE.Vector3(movement.x, movement.y, movement.z);
+    this.playerCollider.setTranslation({
+      x: feet.x + corrected.x,
+      y: feet.y + corrected.y + this.playerColliderOffset,
+      z: feet.z + corrected.z,
+    });
+    return {
+      delta: corrected,
+      grounded: this.playerController.computedGrounded(),
+      hit: this.playerController.numComputedCollisions() > 0,
+    };
+  }
+
   /**
    * Spawns a physical dynamic throwable car into the physics world
    */
@@ -122,6 +197,7 @@ export class PhysicsEngine {
 
     this.scene.add(carMesh);
 
+    const initialSpeed = velocity.length();
     const dynObj: DynamicPhysicsObject = {
       id,
       body,
@@ -129,6 +205,7 @@ export class PhysicsEngine {
       mesh: carMesh,
       life: 25.0,
       maxLife: 25.0,
+      prevSpeed: initialSpeed,
       isCar: true,
       onImpact,
     };
@@ -150,23 +227,23 @@ export class PhysicsEngine {
     if (!this.world || !this.rapier) return;
 
     // Prune debris pool if exceeding maximum count
-    if (this.debrisPool.length >= this.maxDebrisCount) {
+    while (this.debrisPool.length + count > this.maxDebrisCount && this.debrisPool.length > 0) {
       const oldest = this.debrisPool.shift();
       if (oldest) {
         this.removeDynamicObject(oldest.id);
       }
     }
 
-    const shardGeo = new THREE.DodecahedronGeometry(0.7 + Math.random() * 0.6, 0);
-    const shardMat = new THREE.MeshStandardMaterial({
-      color: materialColor,
-      roughness: 0.85,
-      metalness: 0.1,
-    });
-
     for (let i = 0; i < count; i++) {
       const id = `debris_${Date.now()}_${i}_${Math.random()}`;
-      const mesh = new THREE.Mesh(shardGeo, shardMat);
+      const shardMat = new THREE.MeshStandardMaterial({
+        color: materialColor,
+        roughness: 0.85,
+        metalness: 0.1,
+      });
+      const mesh = new THREE.Mesh(this.sharedShardGeo, shardMat);
+      const scale = 0.65 + Math.random() * 0.7;
+      mesh.scale.setScalar(scale);
       mesh.castShadow = true;
       mesh.receiveShadow = true;
       this.debrisGroup.add(mesh);
@@ -197,7 +274,7 @@ export class PhysicsEngine {
         .setAngularDamping(0.25);
 
       const body = this.world.createRigidBody(bodyDesc);
-      const colliderDesc = this.rapier.ColliderDesc.ball(0.65)
+      const colliderDesc = this.rapier.ColliderDesc.ball(0.65 * scale)
         .setRestitution(0.4)
         .setFriction(0.6)
         .setDensity(2.4);
@@ -209,8 +286,8 @@ export class PhysicsEngine {
         body,
         collider,
         mesh,
-        life: 8.0 + Math.random() * 4.0,
-        maxLife: 12.0,
+        life: 7.0 + Math.random() * 4.0,
+        maxLife: 11.0,
         isDebris: true,
       };
 
@@ -228,6 +305,9 @@ export class PhysicsEngine {
 
     if (obj.mesh.parent) {
       obj.mesh.parent.remove(obj.mesh);
+    }
+    if (obj.isDebris && obj.mesh instanceof THREE.Mesh && obj.mesh.material instanceof THREE.Material) {
+      obj.mesh.material.dispose();
     }
     if (this.world && this.world.getRigidBody(obj.body.handle)) {
       this.world.removeRigidBody(obj.body);
@@ -284,10 +364,17 @@ export class PhysicsEngine {
   public step(delta: number) {
     if (!this.world || !this.isReady || this.dynamicObjects.size === 0) return;
 
-    // Cap delta to prevent tunneling during lag spikes
-    const cappedDelta = Math.min(delta, 0.04);
-    this.world.timestep = cappedDelta;
-    this.world.step();
+    // A fixed step keeps thrown cars and debris stable during frame-rate swings.
+    const cappedDelta = Math.min(delta, 0.05);
+    const fixedStep = 1 / 60;
+    this.physicsAccumulator = Math.min(this.physicsAccumulator + cappedDelta, fixedStep * 4);
+    let stepCount = 0;
+    while (this.physicsAccumulator >= fixedStep && stepCount < 4) {
+      this.world.timestep = fixedStep;
+      this.world.step();
+      this.physicsAccumulator -= fixedStep;
+      stepCount += 1;
+    }
 
     // Sync mesh transforms with Rapier bodies
     const toRemove: string[] = [];
@@ -305,12 +392,22 @@ export class PhysicsEngine {
       obj.mesh.position.set(translation.x, translation.y, translation.z);
       obj.mesh.quaternion.set(rotation.x, rotation.y, rotation.z, rotation.w);
 
-      // Check for ground impact for thrown cars
+      // Check for ground or building wall impact for thrown cars
       if (obj.isCar && obj.onImpact) {
         const linvel = obj.body.linvel();
         const currentSpeed = Math.hypot(linvel.x, linvel.y, linvel.z);
-        if (translation.y <= 1.0 && currentSpeed > 18.0) {
-          obj.onImpact(new THREE.Vector3(translation.x, translation.y, translation.z), currentSpeed);
+        const speedDrop = (obj.prevSpeed ?? currentSpeed) - currentSpeed;
+        obj.prevSpeed = currentSpeed;
+
+        const hitGround = translation.y <= 1.25 && currentSpeed > 14.0;
+        const hitWall = speedDrop > 15.0 && (obj.maxLife - obj.life) > 0.04;
+
+        if (hitGround || hitWall) {
+          const impactVel = Math.max(currentSpeed, (obj.prevSpeed ?? 0) + speedDrop);
+          obj.onImpact(
+            new THREE.Vector3(translation.x, Math.max(0.2, translation.y), translation.z),
+            impactVel
+          );
           obj.onImpact = undefined; // trigger once
         }
       }
@@ -330,5 +427,15 @@ export class PhysicsEngine {
 
   public getDynamicObjectsCount(): number {
     return this.dynamicObjects.size;
+  }
+
+  public dispose() {
+    this.dynamicObjects.forEach((_, id) => this.removeDynamicObject(id));
+    if (this.world && this.playerCollider) this.world.removeCollider(this.playerCollider, true);
+    if (this.world && this.playerController) this.world.removeCharacterController(this.playerController);
+    this.playerCollider = null;
+    this.playerController = null;
+    this.scene.remove(this.debrisGroup);
+    this.sharedShardGeo.dispose();
   }
 }

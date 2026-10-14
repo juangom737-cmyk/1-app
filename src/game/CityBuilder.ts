@@ -1,9 +1,11 @@
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { CityBuilding, TimeOfDayMode } from '../types/game';
 
 export interface CityData {
   group: THREE.Group;
   buildings: CityBuilding[];
+  terrainMeshes: THREE.Mesh[];
   dailyPlanetGlobe: THREE.Mesh | null;
   checkCollision: (x: number, y: number, z: number, radius?: number) => {
     hit: boolean;
@@ -26,6 +28,7 @@ export function buildBogotaCity(scene: THREE.Scene): CityData {
   scene.add(cityGroup);
 
   const buildings: CityBuilding[] = [];
+  const terrainMeshes: THREE.Mesh[] = [];
   const lodList: {
     x: number;
     z: number;
@@ -51,61 +54,29 @@ export function buildBogotaCity(scene: THREE.Scene): CityData {
   ground.receiveShadow = true;
   cityGroup.add(ground);
 
-  // Sidewalks & Road Markings Canvas Texture
-  const roadGridCanvas = document.createElement('canvas');
-  roadGridCanvas.width = 1024;
-  roadGridCanvas.height = 1024;
-  const ctx = roadGridCanvas.getContext('2d');
+  // Low-contrast worn ground grain; actual road, curb and paint meshes are
+  // laid down below so streets no longer look like a flat grid printed on grass.
+  const groundGrainCanvas = document.createElement('canvas');
+  groundGrainCanvas.width = 256;
+  groundGrainCanvas.height = 256;
+  const ctx = groundGrainCanvas.getContext('2d');
   if (ctx) {
-    ctx.fillStyle = '#717a72';
-    ctx.fillRect(0, 0, 1024, 1024);
-    // Local streets and broad avenues, laid out over the basin.
-    ctx.setLineDash([]);
-    ctx.strokeStyle = '#35414a';
-    ctx.lineWidth = 7;
-    for (let i = 32; i < 1024; i += 52) {
-      ctx.beginPath();
-      ctx.moveTo(0, i);
-      ctx.lineTo(1024, i);
-      ctx.stroke();
-
-      ctx.beginPath();
-      ctx.moveTo(i, 0);
-      ctx.lineTo(i, 1024);
-      ctx.stroke();
+    const pixels = ctx.createImageData(256, 256);
+    for (let i = 0; i < pixels.data.length; i += 4) {
+      const shade = 128 + Math.floor(Math.random() * 15);
+      pixels.data[i] = shade;
+      pixels.data[i + 1] = shade + 7;
+      pixels.data[i + 2] = shade - 6;
+      pixels.data[i + 3] = 255;
     }
-
-    ctx.strokeStyle = '#27343c';
-    ctx.lineWidth = 13;
-    for (let i = 16; i < 1024; i += 208) {
-      ctx.beginPath();
-      ctx.moveTo(0, i);
-      ctx.lineTo(1024, i);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(i, 0);
-      ctx.lineTo(i, 1024);
-      ctx.stroke();
-    }
-
-    ctx.strokeStyle = '#e7c76a';
-    ctx.lineWidth = 1.5;
-    ctx.setLineDash([7, 9]);
-    for (let i = 16; i < 1024; i += 208) {
-      ctx.beginPath();
-      ctx.moveTo(0, i);
-      ctx.lineTo(1024, i);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(i, 0);
-      ctx.lineTo(i, 1024);
-      ctx.stroke();
-    }
-    ctx.setLineDash([]);
+    ctx.putImageData(pixels, 0, 0);
   }
-  const roadGridTexture = new THREE.CanvasTexture(roadGridCanvas);
-  roadGridTexture.colorSpace = THREE.SRGBColorSpace;
-  groundMat.map = roadGridTexture;
+  const groundGrainTexture = new THREE.CanvasTexture(groundGrainCanvas);
+  groundGrainTexture.colorSpace = THREE.SRGBColorSpace;
+  groundGrainTexture.wrapS = THREE.RepeatWrapping;
+  groundGrainTexture.wrapT = THREE.RepeatWrapping;
+  groundGrainTexture.repeat.set(24, 24);
+  groundMat.map = groundGrainTexture;
   groundMat.needsUpdate = true;
 
   // Window & Emissive texture for skyscrapers (Golden Hour / Twilight Glow)
@@ -539,13 +510,13 @@ export function buildBogotaCity(scene: THREE.Scene): CityData {
   const platformMat = new THREE.MeshStandardMaterial({ color: 0xcfd5d1, roughness: 0.62 });
   const stationRoofMat = new THREE.MeshStandardMaterial({ color: 0xb91c2a, roughness: 0.48, metalness: 0.2 });
   for (const stationZ of [-480, -160, 160, 480]) {
-    const platform = new THREE.Mesh(new THREE.BoxGeometry(15, 1.2, 56), platformMat);
+    const platform = new THREE.Mesh(new THREE.BoxGeometry(7.2, 1.2, 56), platformMat);
     platform.position.set(90, 1.1, stationZ);
     cityGroup.add(platform);
-    const roof = new THREE.Mesh(new THREE.BoxGeometry(17, 1.2, 46), stationRoofMat);
+    const roof = new THREE.Mesh(new THREE.BoxGeometry(9.2, 1.2, 46), stationRoofMat);
     roof.position.set(90, 7, stationZ);
     cityGroup.add(roof);
-    for (const pillarX of [83, 97]) {
+    for (const pillarX of [88, 92]) {
       const pillar = new THREE.Mesh(new THREE.BoxGeometry(0.9, 5.4, 0.9), columnMat);
       pillar.position.set(pillarX, 3.8, stationZ);
       cityGroup.add(pillar);
@@ -553,30 +524,59 @@ export function buildBogotaCity(scene: THREE.Scene): CityData {
   }
 
   // --- CERROS ORIENTALES, MONSERRATE & CERRO DE GUADALUPE ---
-  const foothillMat = new THREE.MeshStandardMaterial({ color: 0x365c47, roughness: 0.98, flatShading: true });
-  const ridgeMat = new THREE.MeshStandardMaterial({ color: 0x274839, roughness: 1, flatShading: true });
+  const createAndeanRidge = (radius: number, height: number, seed: number) => {
+    const geometry = new THREE.ConeGeometry(radius, height, 28, 12);
+    const positions = geometry.getAttribute('position') as THREE.BufferAttribute;
+    const colors: number[] = [];
+    const color = new THREE.Color();
+    for (let i = 0; i < positions.count; i++) {
+      const px = positions.getX(i);
+      const py = positions.getY(i);
+      const pz = positions.getZ(i);
+      const angle = Math.atan2(pz, px);
+      const heightRatio = THREE.MathUtils.clamp((py + height / 2) / height, 0, 1);
+      const ridgeNoise = Math.sin(angle * 5 + seed) * 0.075 + Math.cos(angle * 11 - seed) * 0.035;
+      const radialScale = 1 + ridgeNoise * (1 - heightRatio * 0.75);
+      positions.setXYZ(i, px * radialScale, py + Math.sin(px * 0.018 + seed) * Math.cos(pz * 0.016) * height * 0.012, pz * radialScale);
+      color.setHex(heightRatio > 0.78 ? 0x777c75 : heightRatio > 0.46 ? 0x49694f : 0x365c47);
+      const variation = 0.94 + (Math.sin(px * 0.045 + pz * 0.031 + seed) + 1) * 0.045;
+      color.multiplyScalar(variation);
+      colors.push(color.r, color.g, color.b);
+    }
+    geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+    geometry.computeVertexNormals();
+    const mountain = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({
+      color: 0xffffff,
+      vertexColors: true,
+      roughness: 1,
+      flatShading: true,
+    }));
+    return mountain;
+  };
   const ridgeSpecs = [
-    { x: 1080, z: -420, radius: 310, height: 470 },
-    { x: 1120, z: -80, radius: 360, height: 560 },
-    { x: 1100, z: 310, radius: 330, height: 500 },
+    { x: 1090, z: -760, radius: 330, height: 440 },
+    { x: 1110, z: -460, radius: 380, height: 530 },
+    { x: 1080, z: -130, radius: 425, height: 625 },
+    { x: 1110, z: 235, radius: 390, height: 570 },
+    { x: 1090, z: 590, radius: 350, height: 490 },
+    { x: 1120, z: 885, radius: 280, height: 390 },
   ];
   ridgeSpecs.forEach(({ x, z, radius, height }, index) => {
-    const ridge = new THREE.Mesh(new THREE.ConeGeometry(radius, height, 9, 4), index === 1 ? ridgeMat : foothillMat);
+    const ridge = createAndeanRidge(radius, height, index + 2);
     ridge.position.set(x, height / 2 - 8, z);
     ridge.scale.z = 0.72;
     ridge.castShadow = true;
     cityGroup.add(ridge);
+    terrainMeshes.push(ridge);
   });
 
   const monserrateX = 790;
   const monserrateZ = -110;
-  const monserrate = new THREE.Mesh(
-    new THREE.ConeGeometry(138, 370, 10, 4),
-    new THREE.MeshStandardMaterial({ color: 0x42674a, roughness: 1, flatShading: true })
-  );
+  const monserrate = createAndeanRidge(138, 370, 17);
   monserrate.position.set(monserrateX, 178, monserrateZ);
   monserrate.castShadow = true;
   cityGroup.add(monserrate);
+  terrainMeshes.push(monserrate);
   buildings.push({ x: monserrateX, z: monserrateZ, width: 2, depth: 2, height: 1, name: 'Monserrate', isIconic: true, color: '#22c55e' });
 
   const sanctuaryMat = new THREE.MeshStandardMaterial({ color: 0xf1eee4, roughness: 0.78 });
@@ -601,12 +601,10 @@ export function buildBogotaCity(scene: THREE.Scene): CityData {
 
   const guadalupeX = 880;
   const guadalupeZ = 190;
-  const guadalupe = new THREE.Mesh(
-    new THREE.ConeGeometry(104, 290, 9, 4),
-    new THREE.MeshStandardMaterial({ color: 0x4f6846, roughness: 1, flatShading: true })
-  );
+  const guadalupe = createAndeanRidge(104, 290, 29);
   guadalupe.position.set(guadalupeX, 139, guadalupeZ);
   cityGroup.add(guadalupe);
+  terrainMeshes.push(guadalupe);
   const cross = new THREE.Mesh(
     new THREE.BoxGeometry(3, 30, 3),
     new THREE.MeshStandardMaterial({ color: 0xe7e5df, metalness: 0.35, roughness: 0.55 })
@@ -650,69 +648,244 @@ export function buildBogotaCity(scene: THREE.Scene): CityData {
   }
 
   // --- 7. BARRIOS, MANZANAS Y TORRES DE BOGOTÁ ---
-  const blockOffsets: [number, number][] = [
-    // Core Downtown
-    [-60, 60], [60, 60], [-60, -60], [60, -60],
-    [-180, 120], [-180, 0], [-180, -120],
-    [180, 120], [180, 0], [180, -120],
-    [0, 140], [0, -140], [-120, -180], [120, 180],
-    [-240, 60], [-240, -60], [240, 60], [240, -60],
-    [-120, 180], [120, -180], [-200, 200], [200, -200],
-    [-220, -180], [220, 180], [60, 220], [-60, -220],
-    [-260, 160], [260, -160], [-160, 240], [160, -240],
-    [-60, 180], [60, -180],
-
-    // Chapinero and the northern business corridor
-    [-60, -280], [60, -280], [-160, -280], [160, -280],
-    [-260, -280], [260, -280], [0, -380], [-100, -380],
-    [100, -380], [-200, -380], [200, -380], [-300, -380],
-    [-60, -480], [60, -480], [-160, -480], [160, -480],
-    [0, -580], [-120, -580], [120, -580], [-240, -580],
-    [240, -580], [-80, -680], [80, -680], [-200, -680],
-    [200, -680], [0, -780], [-140, -780], [140, -780],
-
-    // Eastern commercial districts
-    [320, 60], [320, -60], [320, 160], [320, -160],
-    [420, 0], [420, 100], [420, -100], [420, 200],
-    [420, -200], [520, 60], [520, -60], [520, 160],
-    [520, -160], [520, 260], [520, -260], [620, 0],
-    [620, 120], [620, -120], [620, 240], [620, -240],
-    [720, 60], [720, -60], [720, 180], [720, -180],
-
-    // Southern neighborhoods
-    [-60, 280], [60, 280], [-160, 280], [160, 280],
-    [-260, 280], [260, 280], [0, 380], [-120, 380],
-    [120, 380], [-220, 380], [220, 380], [-320, 380],
-    [-60, 480], [60, 480], [-160, 480], [160, 480],
-    [240, 480], [0, 580], [-120, 580], [120, 580],
-    [-220, 580], [220, 580], [0, 680], [-140, 680],
-    [140, 680], [260, 680], [-80, 780], [80, 780],
-
-    // Western neighborhoods near the Río Bogotá
-    [-320, 0], [-320, 100], [-320, -100], [-320, 200],
-    [-320, -200], [-320, -300], [-320, 300], [-360, 60],
-    [-360, -60], [-360, 160], [-360, -160], [-360, -240]
+  const blockOffsets: [number, number][] = [];
+  for (let gridX = -6; gridX <= 6; gridX++) {
+    for (let gridZ = -6; gridZ <= 6; gridZ++) {
+      blockOffsets.push([gridX * 120, gridZ * 120]);
+    }
+  }
+  type BlockStyle = 'historic' | 'brick' | 'modern';
+  type BlockFootprint = { x: number; z: number; width: number; depth: number; height: number };
+  type BlockPlacement = { x: number; z: number; scale: number; quarterTurns: number; footprints: BlockFootprint[] };
+  const layouts: Record<BlockStyle, BlockFootprint[]> = {
+    historic: [
+      { x: -24, z: -23, width: 19, depth: 19, height: 14 }, { x: 0, z: -23, width: 19, depth: 19, height: 17 },
+      { x: 24, z: -23, width: 19, depth: 19, height: 15 }, { x: -24, z: 23, width: 19, depth: 19, height: 16 },
+      { x: 0, z: 23, width: 19, depth: 19, height: 14 }, { x: 24, z: 23, width: 19, depth: 19, height: 18 },
+    ],
+    brick: [
+      { x: -22, z: -22, width: 37, depth: 37, height: 29 }, { x: 22, z: -22, width: 37, depth: 37, height: 39 },
+      { x: -22, z: 22, width: 37, depth: 37, height: 34 }, { x: 22, z: 22, width: 37, depth: 37, height: 26 },
+    ],
+    modern: [
+      { x: -22, z: -22, width: 32, depth: 34, height: 70 }, { x: 21, z: -22, width: 32, depth: 34, height: 94 },
+      { x: -21, z: 21, width: 31, depth: 34, height: 83 }, { x: 22, z: 21, width: 31, depth: 34, height: 58 },
+    ],
+  };
+  const blockAssets: Record<BlockStyle, BlockPlacement[]> = { historic: [], brick: [], modern: [] };
+  const blockColors: Record<BlockStyle, string> = { historic: '#a85c36', brick: '#8b4631', modern: '#57717a' };
+  const fallbackMaterials: Record<BlockStyle, THREE.Material> = {
+    historic: new THREE.MeshStandardMaterial({ color: 0xa85c36, roughness: 0.88 }),
+    brick: new THREE.MeshStandardMaterial({ color: 0x8b4631, roughness: 0.86 }),
+    modern: new THREE.MeshStandardMaterial({ color: 0x57717a, roughness: 0.36, metalness: 0.48 }),
+  };
+  const excludedSites = [
+    { x: 0, z: 0, radius: 155 }, { x: 120, z: -100, radius: 74 }, { x: -120, z: 80, radius: 68 },
+    { x: -80, z: -90, radius: 68 }, { x: 100, z: 120, radius: 74 }, { x: -250, z: -420, radius: 145 },
+    { x: 260, z: -390, radius: 118 }, { x: -790, z: -360, radius: 160 }, { x: 360, z: 540, radius: 90 },
+    { x: 790, z: -110, radius: 195 }, { x: 880, z: 190, radius: 155 },
   ];
 
   blockOffsets.forEach(([bx, bz], index) => {
-    // Avoid iconic buildings overlapping
-    if (Math.hypot(bx, bz) < 30) return;
-    if (Math.hypot(bx - 120, bz + 100) < 40) return;
-    if (Math.hypot(bx + 120, bz - 80) < 40) return;
-    if (Math.hypot(bx + 80, bz + 90) < 40) return;
-    if (Math.hypot(bx - 100, bz - 120) < 40) return;
-    if (Math.hypot(bx + 250, bz + 420) < 132) return; // Parque Simón Bolívar
-    if (Math.hypot(bx - 260, bz + 390) < 100) return; // Estadio El Campín
-    if (Math.hypot(bx + 790, bz + 360) < 135) return; // Aeropuerto El Dorado
-    if (Math.hypot(bx - 360, bz - 540) < 65) return; // energy substation
-
-    const height = 40 + ((index * 31) % 125);
-    const width = 32 + ((index * 13) % 18);
-    const depth = 32 + ((index * 17) % 18);
-
-    const mat = (index % 3 === 0) ? matBlueGlass : (index % 3 === 1) ? matDarkTower : matWarmOffice;
-    addBuilding(bx, bz, width, depth, height, mat);
+    if (excludedSites.some((site) => Math.hypot(bx - site.x, bz - site.z) < site.radius)) return;
+    if (bx >= 720 && Math.abs(bz) <= 1000) return; // Leave the eastern edge for the Cerros Orientales.
+    if (Math.abs(bx - 90) < 72 && Math.abs(bz) < 770) return; // Keep the TransMilenio trunk clear.
+    const style: BlockStyle = Math.hypot(bx, bz) < 405
+      ? 'historic'
+      : (bz < -360 && index % 3 === 0) || bx > 360 ? 'modern' : 'brick';
+    const scale = [0.96, 1.0, 1.035][index % 3];
+    const quarterTurns = index % 4;
+    const angle = quarterTurns * Math.PI / 2;
+    const cos = Math.round(Math.cos(angle));
+    const sin = Math.round(Math.sin(angle));
+    const footprints = layouts[style].map((footprint) => {
+      const localX = footprint.x * scale;
+      const localZ = footprint.z * scale;
+      const rotated = quarterTurns % 2 !== 0;
+      return {
+        x: bx + localX * cos + localZ * sin,
+        z: bz - localX * sin + localZ * cos,
+        width: (rotated ? footprint.depth : footprint.width) * scale,
+        depth: (rotated ? footprint.width : footprint.depth) * scale,
+        height: footprint.height * scale,
+      };
+    });
+    blockAssets[style].push({ x: bx, z: bz, scale, quarterTurns, footprints });
+    footprints.forEach((footprint) => buildings.push({ ...footprint, isIconic: false, color: blockColors[style] }));
   });
+
+  const loadBlockInstances = (style: BlockStyle, fileName: string) => {
+    const placements = blockAssets[style];
+    if (placements.length === 0) return;
+    const addFallback = () => {
+      if (!cityGroup.parent) return;
+      const all = placements.flatMap((placement) => placement.footprints);
+      const fallback = new THREE.InstancedMesh(sharedTowerGeo, fallbackMaterials[style], all.length);
+      const transform = new THREE.Object3D();
+      all.forEach((footprint, index) => {
+        transform.position.set(footprint.x, footprint.height / 2, footprint.z);
+        transform.scale.set(footprint.width, footprint.height, footprint.depth);
+        transform.updateMatrix();
+        fallback.setMatrixAt(index, transform.matrix);
+      });
+      fallback.instanceMatrix.needsUpdate = true;
+      fallback.castShadow = true;
+      fallback.receiveShadow = true;
+      cityGroup.add(fallback);
+    };
+
+    new GLTFLoader().load(`/models/${fileName}`, (gltf) => {
+      if (!cityGroup.parent) return;
+      gltf.scene.updateMatrixWorld(true);
+      const sources: THREE.Mesh[] = [];
+      gltf.scene.traverse((child) => { if (child instanceof THREE.Mesh) sources.push(child); });
+      if (sources.length === 0) { addFallback(); return; }
+      sources.forEach((source) => {
+        const instances = new THREE.InstancedMesh(source.geometry, source.material, placements.length);
+        const blockMatrix = new THREE.Matrix4();
+        const instanceMatrix = new THREE.Matrix4();
+        const position = new THREE.Vector3();
+        const scale = new THREE.Vector3();
+        const rotation = new THREE.Quaternion();
+        const tone = new THREE.Color();
+        placements.forEach((placement, index) => {
+          position.set(placement.x, 0, placement.z);
+          scale.setScalar(placement.scale);
+          rotation.setFromAxisAngle(new THREE.Vector3(0, 1, 0), placement.quarterTurns * Math.PI / 2);
+          blockMatrix.compose(position, rotation, scale);
+          instanceMatrix.multiplyMatrices(blockMatrix, source.matrixWorld);
+          instances.setMatrixAt(index, instanceMatrix);
+          tone.setRGB(0.96 + (index % 4) * 0.012, 0.96 + (index % 3) * 0.01, 0.96);
+          instances.setColorAt(index, tone);
+        });
+        instances.instanceMatrix.needsUpdate = true;
+        if (instances.instanceColor) instances.instanceColor.needsUpdate = true;
+        instances.castShadow = true;
+        instances.receiveShadow = true;
+        cityGroup.add(instances);
+      });
+    }, undefined, (error) => {
+      console.warn('Could not load ' + fileName + '; using low-detail building proxies.', error);
+      addFallback();
+    });
+  };
+
+  loadBlockInstances('historic', 'bogota-la-candelaria-block.glb');
+  loadBlockInstances('brick', 'bogota-brick-midrise-block.glb');
+  loadBlockInstances('modern', 'bogota-modern-block.glb');
+
+  // Street surfaces are real geometry now: asphalt, curbs, broad sidewalks,
+  // broken lane paint and zebra crossings replace the old painted grid texture.
+  const streetCoordinates: number[] = [];
+  for (let street = -6; street <= 5; street++) {
+    const coordinate = street * 120 + 60;
+    if (Math.abs(coordinate) < 145) continue; // Keep the historic core pedestrian-first.
+    streetCoordinates.push(coordinate);
+  }
+  const roadMat = new THREE.MeshStandardMaterial({ color: 0x343a3d, roughness: 0.96 });
+  const sidewalkMat = new THREE.MeshStandardMaterial({ color: 0x9a988d, roughness: 0.94 });
+  const curbMat = new THREE.MeshStandardMaterial({ color: 0xbbb6a7, roughness: 0.88 });
+  const roadUnitGeo = new THREE.BoxGeometry(1, 1, 1);
+  const roadInstanceCount = streetCoordinates.length * 2;
+  const roadSurfaces = new THREE.InstancedMesh(roadUnitGeo, roadMat, roadInstanceCount);
+  const sidewalks = new THREE.InstancedMesh(roadUnitGeo, sidewalkMat, roadInstanceCount * 2);
+  const curbs = new THREE.InstancedMesh(roadUnitGeo, curbMat, roadInstanceCount * 4);
+  const transform = new THREE.Object3D();
+  let roadIndex = 0;
+  let sidewalkIndex = 0;
+  let curbIndex = 0;
+  const addStreet = (coordinate: number, axis: 'x' | 'z', width: number) => {
+    const isVertical = axis === 'z';
+    transform.position.set(isVertical ? coordinate : 0, 0.035, isVertical ? 0 : coordinate);
+    transform.scale.set(isVertical ? width : 2200, 0.08, isVertical ? 2200 : width);
+    transform.updateMatrix();
+    roadSurfaces.setMatrixAt(roadIndex++, transform.matrix);
+    for (const side of [-1, 1]) {
+      const edgeOffset = width / 2 + 2.8;
+      transform.position.set(
+        isVertical ? coordinate + side * edgeOffset : 0,
+        0.09,
+        isVertical ? 0 : coordinate + side * edgeOffset
+      );
+      transform.scale.set(isVertical ? 5.6 : 2200, 0.16, isVertical ? 2200 : 5.6);
+      transform.updateMatrix();
+      sidewalks.setMatrixAt(sidewalkIndex++, transform.matrix);
+
+      const curbOffset = width / 2 + 0.18;
+      transform.position.set(
+        isVertical ? coordinate + side * curbOffset : 0,
+        0.15,
+        isVertical ? 0 : coordinate + side * curbOffset
+      );
+      transform.scale.set(isVertical ? 0.36 : 2200, 0.26, isVertical ? 2200 : 0.36);
+      transform.updateMatrix();
+      curbs.setMatrixAt(curbIndex++, transform.matrix);
+    }
+  };
+  streetCoordinates.forEach((coordinate) => {
+    const avenue = Math.abs(coordinate / 60) % 3 === 0;
+    const width = avenue ? 20 : 14;
+    addStreet(coordinate, 'z', width);
+    addStreet(coordinate, 'x', width);
+  });
+  roadSurfaces.count = roadIndex;
+  sidewalks.count = sidewalkIndex;
+  curbs.count = curbIndex;
+  roadSurfaces.instanceMatrix.needsUpdate = true;
+  sidewalks.instanceMatrix.needsUpdate = true;
+  curbs.instanceMatrix.needsUpdate = true;
+  roadSurfaces.receiveShadow = true;
+  sidewalks.receiveShadow = true;
+  curbs.castShadow = true;
+  cityGroup.add(roadSurfaces, sidewalks, curbs);
+
+  const paintMat = new THREE.MeshBasicMaterial({ color: 0xe9e6d9 });
+  const paintGeo = new THREE.BoxGeometry(1, 1, 1);
+  const roadDashes = new THREE.InstancedMesh(paintGeo, paintMat, streetCoordinates.length * 2 * 88);
+  let dashIndex = 0;
+  streetCoordinates.forEach((coordinate) => {
+    for (let along = -1080; along <= 1080; along += 26) {
+      const blocked = Math.hypot(coordinate - 0, along - 0) < 160 ||
+        Math.hypot(coordinate + 250, along + 420) < 120 ||
+        Math.hypot(coordinate - 260, along + 390) < 100;
+      if (blocked) continue;
+      transform.position.set(coordinate, 0.092, along);
+      transform.scale.set(0.16, 0.018, 7.5);
+      transform.updateMatrix();
+      roadDashes.setMatrixAt(dashIndex++, transform.matrix);
+      transform.position.set(along, 0.092, coordinate);
+      transform.scale.set(7.5, 0.018, 0.16);
+      transform.updateMatrix();
+      roadDashes.setMatrixAt(dashIndex++, transform.matrix);
+    }
+  });
+  roadDashes.count = dashIndex;
+  roadDashes.instanceMatrix.needsUpdate = true;
+  cityGroup.add(roadDashes);
+
+  const crosswalks = new THREE.InstancedMesh(paintGeo, paintMat, streetCoordinates.length * streetCoordinates.length * 4);
+  let crosswalkIndex = 0;
+  for (let row = 0; row < streetCoordinates.length; row += 2) {
+    for (let column = 0; column < streetCoordinates.length; column += 2) {
+      const x = streetCoordinates[column];
+      const z = streetCoordinates[row];
+      if (Math.hypot(x, z) < 180 || Math.hypot(x + 250, z + 420) < 150) continue;
+      for (let stripe = 0; stripe < 7; stripe++) {
+        const offset = (stripe - 3) * 1.45;
+        transform.position.set(x + offset, 0.095, z);
+        transform.scale.set(0.62, 0.02, 9);
+        transform.updateMatrix();
+        crosswalks.setMatrixAt(crosswalkIndex++, transform.matrix);
+        transform.position.set(x, 0.095, z + offset);
+        transform.scale.set(9, 0.02, 0.62);
+        transform.updateMatrix();
+        crosswalks.setMatrixAt(crosswalkIndex++, transform.matrix);
+      }
+    }
+  }
+  crosswalks.count = crosswalkIndex;
+  crosswalks.instanceMatrix.needsUpdate = true;
+  cityGroup.add(crosswalks);
 
   // Warm Bogotá streetlights stay inexpensive through instancing.
   const lampPoleGeo = new THREE.CylinderGeometry(0.2, 0.28, 8, 6);
@@ -873,6 +1046,7 @@ export function buildBogotaCity(scene: THREE.Scene): CityData {
   return {
     group: cityGroup,
     buildings,
+    terrainMeshes,
     dailyPlanetGlobe,
     checkCollision,
     updateLOD,

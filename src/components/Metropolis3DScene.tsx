@@ -137,6 +137,7 @@ export const Metropolis3DScene: React.FC<Metropolis3DSceneProps> = ({
   const heroLandingTimerRef = useRef(0);
   const cameraShakeTimerRef = useRef(0);
   const cameraShakeIntensityRef = useRef(0);
+  const wallImpactCooldownRef = useRef(0);
   const wasSupersonicLastFrameRef = useRef(false);
   const isWallRunningRef = useRef(false);
   const wallRunStrideTimerRef = useRef(0);
@@ -303,7 +304,7 @@ export const Metropolis3DScene: React.FC<Metropolis3DSceneProps> = ({
     if (toggleFlightTrigger > 0) {
       isFlyingRef.current = !isFlyingRef.current;
       if (!isFlyingRef.current) {
-        posRef.current.y = 0.0;
+        if (posRef.current.y <= 0.08) posRef.current.y = 0.0;
         velRef.current.y = 0;
       } else {
         velRef.current.y = 18;
@@ -410,6 +411,7 @@ export const Metropolis3DScene: React.FC<Metropolis3DSceneProps> = ({
       rimLight.intensity = 0.72;
       if (scene.fog) (scene.fog as THREE.FogExp2).color.setHex(0xb0cbd0);
     }
+    scene.background = groundSkyColorRef.current.clone();
     if (cityData?.setTimeOfDay) {
       cityData.setTimeOfDay(timeOfDay);
     }
@@ -447,8 +449,10 @@ export const Metropolis3DScene: React.FC<Metropolis3DSceneProps> = ({
     // --- THREE.JS SETUP ---
     const scene = new THREE.Scene();
     sceneRef.current = scene;
-    scene.background = new THREE.Color(0x8fc6d7);
-    scene.fog = new THREE.FogExp2(0xb0cbd0, 0.00105);
+    const isNightScene = timeOfDayRef.current === 'cyber-night';
+    const isDayScene = timeOfDayRef.current === 'daylight';
+    scene.background = groundSkyColorRef.current.clone();
+    scene.fog = new THREE.FogExp2(isNightScene ? 0x0b1528 : isDayScene ? 0xbae6fd : 0xb0cbd0, 0.00105);
 
     const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.5, 95000);
     cameraRef.current = camera;
@@ -467,11 +471,18 @@ export const Metropolis3DScene: React.FC<Metropolis3DSceneProps> = ({
     postProcessingRef.current = postProcessing;
 
     // --- LIGHTING (Cinematic Golden Hour / Atardecer Dorado & ACES Tone Mapping) ---
-    const hemiLight = new THREE.HemisphereLight(0x38bdf8, 0x451a03, 1.15);
+    const hemiLight = new THREE.HemisphereLight(
+      isNightScene ? 0x1e293b : isDayScene ? 0x7dd3fc : 0x9bd3e2,
+      isNightScene ? 0x090d16 : isDayScene ? 0x334155 : 0x394d3f,
+      isNightScene ? 0.65 : isDayScene ? 1.35 : 1.3
+    );
     hemiLightRef.current = hemiLight;
     scene.add(hemiLight);
 
-    const sunLight = new THREE.DirectionalLight(0xffa257, 3.2);
+    const sunLight = new THREE.DirectionalLight(
+      isNightScene ? 0x38bdf8 : isDayScene ? 0xfffbeb : 0xffa257,
+      isNightScene ? 1.35 : isDayScene ? 3.5 : 3.2
+    );
     sunLight.position.set(1600, 750, -1800);
     sunLight.castShadow = true;
     sunLight.shadow.mapSize.width = 1024;
@@ -487,7 +498,10 @@ export const Metropolis3DScene: React.FC<Metropolis3DSceneProps> = ({
     scene.add(sunLight);
 
     // Warm Sunset Rim Light
-    const rimLight = new THREE.DirectionalLight(0xf59e0b, 0.85);
+    const rimLight = new THREE.DirectionalLight(
+      isNightScene ? 0xa855f7 : isDayScene ? 0x38bdf8 : 0xf59e0b,
+      isNightScene ? 0.9 : isDayScene ? 0.65 : 0.85
+    );
     rimLight.position.set(-1200, 400, 1400);
     rimLightRef.current = rimLight;
     scene.add(rimLight);
@@ -495,158 +509,9 @@ export const Metropolis3DScene: React.FC<Metropolis3DSceneProps> = ({
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.12;
 
-    // --- CELESTIAL SPACE ELEMENTS (INFINITE SOLAR SYSTEM: EARTH, MOON, MARS, SATURN, SUN) ---
-    const starCount = 4500;
-    const starGeo = new THREE.BufferGeometry();
-    const starPositions = new Float32Array(starCount * 3);
-    for (let i = 0; i < starCount; i++) {
-      const u = Math.random();
-      const v = Math.random();
-      const theta = u * 2.0 * Math.PI;
-      const phi = Math.acos(2.0 * v - 1.0);
-      const r = 12000 + Math.random() * 25000;
-      const sinPhi = Math.sin(phi);
-      starPositions[i * 3] = r * sinPhi * Math.cos(theta);
-      starPositions[i * 3 + 1] = Math.abs(r * Math.cos(phi)) + 150;
-      starPositions[i * 3 + 2] = r * sinPhi * Math.sin(theta);
-    }
-    starGeo.setAttribute('position', new THREE.BufferAttribute(starPositions, 3));
-    const starMat = new THREE.PointsMaterial({
-      color: 0xffffff,
-      size: 4.0,
-      transparent: true,
-      opacity: 0.0,
-      blending: THREE.AdditiveBlending,
-    });
-    const starField = new THREE.Points(starGeo, starMat);
-    scene.add(starField);
-
-    // 2. Planet Earth Sphere beneath Metropolis (Curved Horizon)
-    const earthCurvatureGeo = new THREE.SphereGeometry(14000, 64, 64);
-    const earthCurvatureMat = new THREE.MeshStandardMaterial({
-      color: 0x0c2744,
-      roughness: 0.65,
-      metalness: 0.35,
-    });
-    const earthSphere = new THREE.Mesh(earthCurvatureGeo, earthCurvatureMat);
-    earthSphere.position.set(0, -14000, 0);
-    scene.add(earthSphere);
-
-    // Atmospheric Limb Glow
-    const atmoGlowGeo = new THREE.RingGeometry(2400, 4200, 64);
-    atmoGlowGeo.rotateX(-Math.PI / 2);
-    const atmoGlowMat = new THREE.MeshBasicMaterial({
-      color: 0x38bdf8,
-      transparent: true,
-      opacity: 0.0,
-      side: THREE.DoubleSide,
-      blending: THREE.AdditiveBlending,
-    });
-    const atmoGlow = new THREE.Mesh(atmoGlowGeo, atmoGlowMat);
-    atmoGlow.position.set(0, 8, 0);
-    scene.add(atmoGlow);
-
-    // 3. The Moon (Luna) with craters
-    const moonGroup = new THREE.Group();
-    moonGroup.position.set(-4200, 5800, -5600);
-    const moonGeo = new THREE.SphereGeometry(320, 32, 32);
-    const moonMat = new THREE.MeshStandardMaterial({
-      color: 0xe2e8f0,
-      roughness: 0.9,
-      metalness: 0.08,
-    });
-    const moonMesh = new THREE.Mesh(moonGeo, moonMat);
-    moonGroup.add(moonMesh);
-    const craterGeo = new THREE.RingGeometry(24, 42, 16);
-    const craterMat = new THREE.MeshBasicMaterial({ color: 0x94a3b8, side: THREE.DoubleSide });
-    for (let c = 0; c < 5; c++) {
-      const cr = new THREE.Mesh(craterGeo, craterMat);
-      cr.position.set((c - 2) * 60, c % 2 === 0 ? 50 : -50, 310);
-      moonGroup.add(cr);
-    }
-    scene.add(moonGroup);
-
-    // 4. Mars (Marte)
-    const marsGroup = new THREE.Group();
-    marsGroup.position.set(9800, 8500, -11000);
-    const marsGeo = new THREE.SphereGeometry(260, 32, 32);
-    const marsMat = new THREE.MeshStandardMaterial({
-      color: 0xc2410c,
-      roughness: 0.82,
-      metalness: 0.12,
-    });
-    const marsMesh = new THREE.Mesh(marsGeo, marsMat);
-    marsGroup.add(marsMesh);
-
-    const iceCapGeo = new THREE.SphereGeometry(75, 16, 16);
-    const iceCapMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
-    const iceCap = new THREE.Mesh(iceCapGeo, iceCapMat);
-    iceCap.position.set(0, 245, 0);
-    marsGroup.add(iceCap);
-    scene.add(marsGroup);
-
-    // 5. Saturn with Planetary Ring System
-    const saturnGroup = new THREE.Group();
-    saturnGroup.position.set(-16000, 14000, -20000);
-    const saturnGeo = new THREE.SphereGeometry(680, 36, 36);
-    const saturnMat = new THREE.MeshStandardMaterial({
-      color: 0xf59e0b,
-      roughness: 0.52,
-      metalness: 0.22,
-    });
-    const saturnMesh = new THREE.Mesh(saturnGeo, saturnMat);
-    saturnGroup.add(saturnMesh);
-
-    const saturnRingsGeo = new THREE.RingGeometry(880, 1650, 64);
-    saturnRingsGeo.rotateX(Math.PI / 2.3);
-    saturnRingsGeo.rotateZ(0.28);
-    const saturnRingsMat = new THREE.MeshBasicMaterial({
-      color: 0xfde047,
-      side: THREE.DoubleSide,
-      transparent: true,
-      opacity: 0.88,
-      blending: THREE.AdditiveBlending,
-    });
-    const saturnRings = new THREE.Mesh(saturnRingsGeo, saturnRingsMat);
-    saturnGroup.add(saturnRings);
-    scene.add(saturnGroup);
-
-    // 6. Blazing Solar Star
-    const sunGroup = new THREE.Group();
-    sunGroup.position.set(24000, 28000, -32000);
-
-    const sunSphereGeo = new THREE.SphereGeometry(2200, 32, 32);
-    const sunSphereMat = new THREE.MeshBasicMaterial({ color: 0xfffbeb });
-    const sunSphere = new THREE.Mesh(sunSphereGeo, sunSphereMat);
-    sunGroup.add(sunSphere);
-
-    const corona1Geo = new THREE.RingGeometry(2300, 4200, 32);
-    const corona1Mat = new THREE.MeshBasicMaterial({
-      color: 0xfde047,
-      transparent: true,
-      opacity: 0.88,
-      side: THREE.DoubleSide,
-      blending: THREE.AdditiveBlending,
-    });
-    const corona1 = new THREE.Mesh(corona1Geo, corona1Mat);
-    corona1.lookAt(-24000, -28000, 32000);
-    sunGroup.add(corona1);
-
-    const corona2Geo = new THREE.RingGeometry(4100, 7000, 32);
-    const corona2Mat = new THREE.MeshBasicMaterial({
-      color: 0xf59e0b,
-      transparent: true,
-      opacity: 0.5,
-      side: THREE.DoubleSide,
-      blending: THREE.AdditiveBlending,
-    });
-    const corona2 = new THREE.Mesh(corona2Geo, corona2Mat);
-    corona2.lookAt(-24000, -28000, 32000);
-    sunGroup.add(corona2);
-    scene.add(sunGroup);
-
     // --- BUILD BOGOTÁ ---
     const cityData = buildBogotaCity(scene);
+    cityData.setTimeOfDay?.(timeOfDayRef.current);
     cityDataRef.current = cityData;
 
     // --- TRAFFIC SYSTEM ---
@@ -656,6 +521,7 @@ export const Metropolis3DScene: React.FC<Metropolis3DSceneProps> = ({
     // --- SUPERMAN RIG ---
     const superman = createSupermanCharacter(scene);
     supermanRef.current = superman;
+    void superman.loadExternalModel?.('/models/superman-bogota.glb');
 
     // --- CRIME & EMERGENCY MANAGER ---
     const crime = new CrimeManager(scene);
@@ -672,6 +538,8 @@ export const Metropolis3DScene: React.FC<Metropolis3DSceneProps> = ({
       cityData.buildings.forEach((b) => {
         physics.addBuildingCollider(b.x, b.z, b.width, b.depth, b.height);
       });
+      cityData.terrainMeshes.forEach((mesh) => physics.addTerrainCollider(mesh));
+      physics.addPlayerController();
     });
 
     const destruction = new DestructionSystem(scene, physics);
@@ -836,8 +704,6 @@ export const Metropolis3DScene: React.FC<Metropolis3DSceneProps> = ({
     window.addEventListener('wheel', onWheel, { passive: true });
     window.addEventListener('resize', onResize);
 
-    const spaceSkyColor = new THREE.Color(0x010409);
-
     // --- MAIN GAME LOOP ---
     let lastTime = performance.now();
 
@@ -846,6 +712,7 @@ export const Metropolis3DScene: React.FC<Metropolis3DSceneProps> = ({
       const rawDtMs = Math.max(1, time - lastTime);
       const delta = Math.min(rawDtMs / 1000, 0.1);
       lastTime = time;
+      wallImpactCooldownRef.current = Math.max(0, wallImpactCooldownRef.current - delta);
 
       // Track frame time buffer (last 90 frames)
       frameTimesBuffer.push(rawDtMs);
@@ -913,19 +780,13 @@ export const Metropolis3DScene: React.FC<Metropolis3DSceneProps> = ({
       const forwardDirZ = -Math.cos(rotYRef.current);
 
       // Speed calculations
-      const altitude = posRef.current.y;
-      const isSpace = altitude > 650;
-      const spaceSpeedFactor = isSpace
-        ? Math.min(14.0, 1.0 + Math.pow((altitude - 650) / 1000, 1.35))
-        : 1.0;
-
       const speedMultiplier = isSupersonicRef.current
         ? isFlyingRef.current
-          ? 400 * spaceSpeedFactor
+          ? 400
           : 92
         : isFlyingRef.current
-        ? 95 * (isSpace ? Math.min(4.5, 1.0 + (altitude - 650) / 1800) : 1.0)
-        : 22;
+        ? 58
+        : 10;
 
       // INSTANT SUPERSONIC IMPULSE TRIGGER
       if (isSupersonicNow && !wasSupersonicLastFrameRef.current) {
@@ -963,49 +824,86 @@ export const Metropolis3DScene: React.FC<Metropolis3DSceneProps> = ({
       const targetVx = forwardDirX * targetSpeed;
       const targetVz = forwardDirZ * targetSpeed;
 
-      const accelRate = isSupersonicRef.current ? delta * 32.0 : delta * 6.5;
+      const accelRate = Math.min(1, delta * (isSupersonicRef.current ? 3.2 : 2.1));
       velRef.current.x = THREE.MathUtils.lerp(velRef.current.x, targetVx, accelRate);
       velRef.current.z = THREE.MathUtils.lerp(velRef.current.z, targetVz, accelRate);
 
       // Vertical flight and descending dynamics
       if (isFlyingRef.current) {
         if (moveUp > 0) {
-          const highAltBoost =
-            posRef.current.y > 650
-              ? Math.min(12.0, 2.0 + (posRef.current.y - 650) / 1200)
-              : posRef.current.y > 250
-              ? 1.85
-              : 1.0;
-          const targetVy = (isSupersonicRef.current ? 220 : 90) * highAltBoost;
-          velRef.current.y = THREE.MathUtils.lerp(velRef.current.y, targetVy, delta * 7.5);
+          const targetVy = isSupersonicRef.current ? 70 : 38;
+          velRef.current.y = THREE.MathUtils.lerp(velRef.current.y, targetVy, Math.min(1, delta * 3.5));
         } else if (moveUp < 0) {
-          const targetVy = isSupersonicRef.current ? -320 : -160;
-          velRef.current.y = THREE.MathUtils.lerp(velRef.current.y, targetVy, delta * 9.5);
+          const targetVy = isSupersonicRef.current ? -95 : -52;
+          velRef.current.y = THREE.MathUtils.lerp(velRef.current.y, targetVy, Math.min(1, delta * 4.5));
         } else {
-          velRef.current.y = THREE.MathUtils.lerp(velRef.current.y, 0, delta * 6.0);
+          velRef.current.y = THREE.MathUtils.lerp(velRef.current.y, 0, Math.min(1, delta * 2.8));
         }
       } else {
         if (moveUp > 0) {
           isFlyingRef.current = true;
-          velRef.current.y = 35;
+          velRef.current.y = 10;
         } else {
-          velRef.current.y = THREE.MathUtils.lerp(velRef.current.y, -30, delta * 5);
+          velRef.current.y = Math.max(-65, velRef.current.y - 9.81 * delta);
         }
       }
 
-      // Update position
-      posRef.current.x += velRef.current.x * delta;
-      posRef.current.y += velRef.current.y * delta;
-      posRef.current.z += velRef.current.z * delta;
+      // Swept Rapier capsule movement stops tunneling through façades and roofs.
+      const requestedMove = new THREE.Vector3(
+        velRef.current.x * delta,
+        velRef.current.y * delta,
+        velRef.current.z * delta
+      );
+      const landingSpeed = velRef.current.y;
+      const wasDescending = landingSpeed < -2;
+      const playerPosition = new THREE.Vector3(posRef.current.x, posRef.current.y, posRef.current.z);
+      const resolvedMove = physicsRef.current?.movePlayer(playerPosition, requestedMove) ?? null;
+      if (resolvedMove) {
+        posRef.current.x += resolvedMove.delta.x;
+        posRef.current.y += resolvedMove.delta.y;
+        posRef.current.z += resolvedMove.delta.z;
+        const requestedHorizontal = Math.hypot(requestedMove.x, requestedMove.z);
+        const movedHorizontal = Math.hypot(resolvedMove.delta.x, resolvedMove.delta.z);
+        if (
+          resolvedMove.hit &&
+          !resolvedMove.grounded &&
+          wallImpactCooldownRef.current <= 0 &&
+          requestedHorizontal > 8 &&
+          movedHorizontal < requestedHorizontal * 0.55
+        ) {
+          const impactSpeed = Math.hypot(velRef.current.x, velRef.current.z);
+          if (impactSpeed > 24 && destructionRef.current) {
+            destructionRef.current.triggerImpact(
+              playerPosition,
+              new THREE.Vector3(-velRef.current.x, 0, -velRef.current.z).normalize(),
+              Math.min(125, impactSpeed * 1.8),
+              true
+            );
+            cameraShakeTimerRef.current = 0.28;
+            cameraShakeIntensityRef.current = Math.min(1.8, impactSpeed * 0.012);
+            wallImpactCooldownRef.current = 0.8;
+          }
+        }
+        if (Math.abs(resolvedMove.delta.x - requestedMove.x) > 0.03) velRef.current.x *= 0.08;
+        if (Math.abs(resolvedMove.delta.z - requestedMove.z) > 0.03) velRef.current.z *= 0.08;
+        if (Math.abs(resolvedMove.delta.y - requestedMove.y) > 0.03) velRef.current.y = 0;
+        if (resolvedMove.grounded && !isFlyingRef.current) velRef.current.y = Math.max(0, velRef.current.y);
+      } else {
+        posRef.current.x += requestedMove.x;
+        posRef.current.y += requestedMove.y;
+        posRef.current.z += requestedMove.z;
+      }
 
-      if (posRef.current.y <= 650) {
-        posRef.current.x = Math.max(-1100, Math.min(1100, posRef.current.x));
-        posRef.current.z = Math.max(-1100, Math.min(1100, posRef.current.z));
+      posRef.current.x = Math.max(-1100, Math.min(1100, posRef.current.x));
+      posRef.current.z = Math.max(-1100, Math.min(1100, posRef.current.z));
+      if (posRef.current.y > 1500) {
+        posRef.current.y = 1500;
+        velRef.current.y = Math.min(0, velRef.current.y);
       }
 
       // Ground limit and Hero Landing impact
-      if (posRef.current.y <= 0.08) {
-        if (velRef.current.y < -16 && !isHeroLandingRef.current) {
+      if (posRef.current.y <= 0.08 || (resolvedMove?.grounded && wasDescending)) {
+        if (wasDescending && Math.abs(landingSpeed) > 16 && !isHeroLandingRef.current) {
           isHeroLandingRef.current = true;
           heroLandingTimerRef.current = 0.55;
           isFlyingRef.current = false;
@@ -1013,21 +911,21 @@ export const Metropolis3DScene: React.FC<Metropolis3DSceneProps> = ({
           superman.triggerGroundSlamShockwave();
           audioService.playGroundSlam();
           destruction.triggerImpact(
-            new THREE.Vector3(posRef.current.x, 0.05, posRef.current.z),
+            new THREE.Vector3(posRef.current.x, Math.max(0.05, posRef.current.y), posRef.current.z),
             new THREE.Vector3(0, 1, 0),
-            Math.min(125, Math.abs(velRef.current.y) * 3.8)
+            Math.min(125, Math.abs(landingSpeed) * 3.8)
           );
           traffic.triggerTrafficPanic(posRef.current.x, posRef.current.z, 35);
 
           cameraShakeTimerRef.current = 0.38;
-          cameraShakeIntensityRef.current = Math.min(2.5, Math.abs(velRef.current.y) * 0.05);
+          cameraShakeIntensityRef.current = Math.min(2.5, Math.abs(landingSpeed) * 0.05);
 
           if (crimeRef.current) {
             const hits = crimeRef.current.handleGroundSlamHit(posRef.current.x, posRef.current.z, 24);
             if (hits > 0) onMissionCompleted(hits * 10);
           }
         }
-        posRef.current.y = 0.0;
+        if (posRef.current.y <= 0.08) posRef.current.y = 0.0;
         velRef.current.y = 0;
       }
 
@@ -1042,31 +940,14 @@ export const Metropolis3DScene: React.FC<Metropolis3DSceneProps> = ({
         cameraShakeTimerRef.current -= delta;
       }
 
-      // Atmospheric & Outer Space Sky Transition
+      // Atmospheric haze thins gradually over the high-altitude Bogotá basin.
       const alt = posRef.current.y;
-      const spaceFactor = THREE.MathUtils.clamp((alt - 180) / 550, 0, 1);
-      (scene.background as THREE.Color).lerpColors(
-        groundSkyColorRef.current,
-        spaceSkyColor,
-        spaceFactor
-      );
-
       if (scene.fog) {
-        (scene.fog as THREE.FogExp2).density = THREE.MathUtils.lerp(0.00105, 0.000008, spaceFactor);
+        (scene.fog as THREE.FogExp2).density = THREE.MathUtils.lerp(0.00105, 0.00034, THREE.MathUtils.clamp(alt / 1300, 0, 1));
       }
 
-      const nightStarBoost = timeOfDayRef.current === 'cyber-night' ? 0.55 : 0.0;
-      starMat.opacity = Math.max(nightStarBoost, spaceFactor * 0.95);
-      atmoGlowMat.opacity = spaceFactor * 0.75;
-      corona1Mat.opacity = 0.5 + spaceFactor * 0.45;
-
-      earthSphere.rotation.y += delta * 0.002;
-      moonGroup.rotation.y += delta * 0.006;
-      marsGroup.rotation.y += delta * 0.005;
-      saturnGroup.rotation.y += delta * 0.007;
-
       // Building Collision detection & Vertical Wall Running / Rooftop Catapult Vault
-      if (posRef.current.y < 280) {
+      if (!resolvedMove && posRef.current.y < 280) {
         const col = cityData.checkCollision(posRef.current.x, posRef.current.y, posRef.current.z, 2.0);
         if (col.hit) {
           posRef.current.x += col.pushX * 1.05;
@@ -1133,11 +1014,7 @@ export const Metropolis3DScene: React.FC<Metropolis3DSceneProps> = ({
       const horizontalSpeed = Math.hypot(velRef.current.x, velRef.current.z);
       const totalSpeed = Math.hypot(horizontalSpeed, velRef.current.y);
       const speedKmh = totalSpeed * 3.6;
-      const mach = isSupersonicRef.current
-        ? Math.max(1.2, speedKmh / 320)
-        : speedKmh > 320
-        ? speedKmh / 320
-        : 0;
+      const mach = speedKmh > 1225 ? speedKmh / 1225 : 0;
 
       audioService.updateWindSound(totalSpeed / 160, isSupersonicRef.current);
 
@@ -1256,23 +1133,23 @@ export const Metropolis3DScene: React.FC<Metropolis3DSceneProps> = ({
       }
 
       // Camera Framing: AAA Cinematic Third-Person Framing
-      const isCosmos = posRef.current.y > 800;
-      const camDist = isCosmos
-        ? 19.5
+      const isHighAltitude = posRef.current.y > 650;
+      const camDist = isHighAltitude
+        ? 16.5
         : isSupersonicRef.current
         ? 16.5
         : isFlyingRef.current
         ? 11.2
         : 4.8;
-      const camElevation = isCosmos
-        ? 6.8
+      const camElevation = isHighAltitude
+        ? 5.8
         : isSupersonicRef.current
         ? 5.8
         : isFlyingRef.current
         ? 4.6
         : 1.85;
 
-      const shoulderOffset = isFlyingRef.current || isCosmos ? 0.0 : 0.42;
+      const shoulderOffset = isFlyingRef.current || isHighAltitude ? 0.0 : 0.42;
       const rightX = Math.cos(rotYRef.current) * shoulderOffset;
       const rightZ = -Math.sin(rotYRef.current) * shoulderOffset;
 
@@ -1280,7 +1157,7 @@ export const Metropolis3DScene: React.FC<Metropolis3DSceneProps> = ({
       let targetCamZ = posRef.current.z + Math.cos(rotYRef.current) * camDist + rightZ;
       let targetCamY = posRef.current.y + camElevation;
 
-      if (cityData.checkCollision && !isCosmos) {
+      if (cityData.checkCollision && !isHighAltitude) {
         const camCol = cityData.checkCollision(targetCamX, targetCamY, targetCamZ, 1.2);
         if (camCol.hit) {
           targetCamX = posRef.current.x + Math.sin(rotYRef.current) * 2.8 + rightX * 0.5;

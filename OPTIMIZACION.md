@@ -19,8 +19,10 @@ Los Silentes sustraen un núcleo experimental del Banco de la República. Las se
 
 ## Presentación y navegación
 
-- Textura de calles y avenidas sobre el terreno, paleta de atardecer altoandino, antialiasing y niebla más gradual.
-- Hitos legibles desde el minimapa y relieve verde al oriente.
+- Calzadas, andenes, separadores, pintura vial y cruces como instancias 3D; el tráfico ocupa los carriles y el corredor BRT.
+- Manzanas GLB reutilizadas como instancias para reducir duplicación de geometría; terreno con variación discreta y Cerros Orientales con relieve y colisión convexa.
+- Atmósfera de Bogotá con niebla gradual y cambios de cielo que siguen el ciclo de luz, sin cuerpos celestes gigantes.
+- Cápsula de personaje con desplazamiento barrido de Rapier, deslizamiento contra edificios, gravedad al caminar y simulación de cuerpos rígidos a paso fijo.
 - El radar identifica barrios aproximados, cerros, Parque Simón Bolívar, El Dorado y el corredor de TransMilenio.
 - Superman inicia sobre la Plaza de Bolívar; la historia arranca dentro del mapa.
 
@@ -35,4 +37,4 @@ npm install
 npm run dev
 ```
 
-El escenario usa geometría procedural de Three.js y no necesita descargar paquetes de mapas ni imágenes externas.
+Los modelos GLB de héroe, manzanas y escena urbana se generan desde `tools/generate_glb_assets.py` con Python estándar. El mapa es una composición jugable inspirada en Bogotá, no un levantamiento geográfico exacto, y no descarga paquetes de mapas ni imágenes externas.

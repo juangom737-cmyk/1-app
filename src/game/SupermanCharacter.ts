@@ -285,6 +285,9 @@ export function createSupermanCharacter(scene: THREE.Scene): SupermanMeshControl
 
   const characterGroup = new THREE.Group();
   characterPivot.add(characterGroup);
+  let externalMixer: THREE.AnimationMixer | null = null;
+  const externalActions = new Map<string, THREE.AnimationAction>();
+  let externalActionName = '';
 
   // --- PROCEDURAL PBR TEXTURES ---
   const suitNormalMap = createSuitNormalMap();
@@ -945,8 +948,8 @@ export function createSupermanCharacter(scene: THREE.Scene): SupermanMeshControl
   // 7. VOLUMETRIC HEAT VISION (TWIN PRECISION BEAMS FROM EYE PUPILS)
   // ==========================================================================
   const heatVisionGroup = new THREE.Group();
-  headGroup.add(heatVisionGroup);
-  heatVisionGroup.position.set(0, 0.58, 0.46);
+  rootGroup.add(heatVisionGroup);
+  heatVisionGroup.position.set(0, 5.03, 0.46);
 
   const laserLen = 220;
   // White plasma core
@@ -1009,8 +1012,8 @@ export function createSupermanCharacter(scene: THREE.Scene): SupermanMeshControl
   // 8. FREEZE BREATH (VOLUMETRIC BLIZZARD CONE & ICE CRYSTALS FROM LIPS)
   // ==========================================================================
   const freezeGroup = new THREE.Group();
-  headGroup.add(freezeGroup);
-  freezeGroup.position.set(0, 0.32, 0.48);
+  rootGroup.add(freezeGroup);
+  freezeGroup.position.set(0, 4.77, 0.48);
 
   const frostConeGeo = new THREE.ConeGeometry(5.5, 30, 20, 1, true);
   frostConeGeo.rotateX(-Math.PI / 2);
@@ -1179,11 +1182,11 @@ export function createSupermanCharacter(scene: THREE.Scene): SupermanMeshControl
   let punchComboIndex = 0;
 
   const triggerPunch = (comboStep: number = 0) => {
-    punchComboIndex = comboStep % 3;
-    punchAnimTimer = 0.28;
-    punchRing.scale.set(0.4, 0.4, 0.4);
+    punchComboIndex = comboStep % 4;
+    punchAnimTimer = punchComboIndex === 3 ? 0.36 : 0.28;
+    punchRing.scale.set(punchComboIndex === 3 ? 0.7 : 0.4, punchComboIndex === 3 ? 0.7 : 0.4, 0.4);
     punchRingMat.opacity = 1.0;
-    punchFlashMat.opacity = 0.85;
+    punchFlashMat.opacity = 0.92;
 
     if (punchComboIndex === 0) {
       punchRingMat.color.setHex(0x38bdf8);
@@ -1191,9 +1194,12 @@ export function createSupermanCharacter(scene: THREE.Scene): SupermanMeshControl
     } else if (punchComboIndex === 1) {
       punchRingMat.color.setHex(0xf59e0b);
       punchImpactGroup.position.set(-0.45, 3.4, 2.2);
-    } else {
+    } else if (punchComboIndex === 2) {
       punchRingMat.color.setHex(0xef4444);
       punchImpactGroup.position.set(0, 3.2, 2.5);
+    } else {
+      punchRingMat.color.setHex(0xfacc15);
+      punchImpactGroup.position.set(0, 3.0, 2.8);
     }
   };
 
@@ -1229,6 +1235,40 @@ export function createSupermanCharacter(scene: THREE.Scene): SupermanMeshControl
     isHoldingObject: boolean = false
   ) => {
     animTime += delta;
+
+    // The bundled GLB owns the visible body. Blend its authored locomotion
+    // clips while leaving the existing heat, freeze, punch and impact VFX live.
+    if (externalMixer) {
+      const nextName = isHeroLanding
+        ? 'Landing'
+        : punchAnimTimer > 0
+        ? 'Punch'
+        : isWallRunning
+        ? 'Run'
+        : isFlying
+        ? 'Flight'
+        : speed > 1.8
+        ? 'Run'
+        : 'Idle';
+      const nextAction = externalActions.get(nextName);
+      if (nextAction && externalActionName !== nextName) {
+        externalActions.get(externalActionName)?.fadeOut(0.18);
+        nextAction.reset();
+        if (nextName === 'Punch' || nextName === 'Landing') {
+          nextAction.setLoop(THREE.LoopOnce, 1);
+          nextAction.clampWhenFinished = true;
+        } else {
+          nextAction.setLoop(THREE.LoopRepeat, Infinity);
+          nextAction.clampWhenFinished = false;
+        }
+        nextAction.setEffectiveTimeScale(1).setEffectiveWeight(1).fadeIn(0.18).play();
+        externalActionName = nextName;
+      }
+      if (nextName === 'Run') {
+        nextAction?.setEffectiveTimeScale(THREE.MathUtils.clamp(speed / 8, 0.72, 1.65));
+      }
+      externalMixer.update(delta);
+    }
 
     // Organic Realistic Eye Blinking Simulation (every 2.5 - 4.5 seconds)
     blinkTimer -= delta;
@@ -1447,8 +1487,8 @@ export function createSupermanCharacter(scene: THREE.Scene): SupermanMeshControl
     heatVisionGroup.position.set(headWorldVec.x, headWorldVec.y + 0.14, headWorldVec.z + 0.34);
     heatVisionGroup.rotation.x = isDiving ? 0.35 : 0.0;
 
-    freezeParticles.position.set(headWorldVec.x, headWorldVec.y - 0.12, headWorldVec.z + 0.34);
-    freezeParticles.rotation.x = isDiving ? 0.35 : 0.0;
+    freezeGroup.position.set(headWorldVec.x, headWorldVec.y - 0.12, headWorldVec.z + 0.34);
+    freezeGroup.rotation.x = isDiving ? 0.35 : 0.0;
 
     // --- HIGH-FIDELITY CLOTH VERTEX WAVE SIMULATION ON CAPE ---
     const posAttr = capeGeo.attributes.position as THREE.BufferAttribute;
@@ -1635,10 +1675,20 @@ export function createSupermanCharacter(scene: THREE.Scene): SupermanMeshControl
       loader.load(
         url,
         (gltf) => {
-          // Remove procedural character meshes and bind external GLB model
+          // Fit the real-scale GLB into the existing rig's local-space scale.
           characterGroup.clear();
           const model = gltf.scene;
-          model.scale.set(1.0, 1.0, 1.0);
+          model.updateMatrixWorld(true);
+          const bounds = new THREE.Box3().setFromObject(model);
+          const size = bounds.getSize(new THREE.Vector3());
+          const modelScale = size.y > 0 ? 5.9 / size.y : 1;
+          model.scale.setScalar(modelScale);
+          model.position.set(
+            -((bounds.min.x + bounds.max.x) * 0.5) * modelScale,
+            -bounds.min.y * modelScale,
+            -((bounds.min.z + bounds.max.z) * 0.5) * modelScale
+          );
+          characterPivot.position.y = 0;
           model.traverse((child) => {
             if (child instanceof THREE.Mesh) {
               child.castShadow = true;
@@ -1646,6 +1696,12 @@ export function createSupermanCharacter(scene: THREE.Scene): SupermanMeshControl
             }
           });
           characterGroup.add(model);
+          externalMixer = new THREE.AnimationMixer(model);
+          externalActions.clear();
+          for (const clip of gltf.animations) {
+            externalActions.set(clip.name, externalMixer.clipAction(clip));
+          }
+          externalActionName = '';
           resolve(true);
         },
         undefined,

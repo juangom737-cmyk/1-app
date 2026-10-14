@@ -1,6 +1,6 @@
 # Bogotá 3D — Guardián de Bogotá
 
-Una aventura de acción en tercera persona protagonizada por Superman, ambientada en una recreación estilizada y jugable de Bogotá. El mapa combina hitos reconocibles y barrios conectados por un corredor de TransMilenio; no pretende ser cartografía exacta.
+Una aventura de acción en tercera persona protagonizada por Superman, ambientada en una recreación jugable de Bogotá. Combina barrios de La Candelaria, vivienda de ladrillo, torres modernas, hitos reconocibles y un corredor de TransMilenio. Es una escena de juego a escala aproximada, no cartografía catastral.
 
 ## La historia: La noche del apagón
 
@@ -14,12 +14,15 @@ Cada misión incluye contexto narrativo, ubicación y objetivo. Puedes cambiar d
 - Torre Colpatria, Hospital San Ignacio, Estadio El Campín y Aeropuerto El Dorado.
 - Cerros Orientales con Monserrate, Guadalupe y un teleférico visible.
 - Parque Simón Bolívar, río Bogotá y un corredor de TransMilenio con estaciones.
+- Calzadas, andenes, separadores y cruces peatonales como geometría 3D; el tráfico sigue los carriles y TransMilenio usa su propio corredor.
 - Tráfico con taxis amarillos, patrullas, vehículos urbanos y buses articulados rojos.
 - Minimapa con barrios, hitos, Cerros Orientales, corredor de buses y objetivo activo.
+- Modelos GLB PBR originales para el héroe y los tres estilos de manzana. `public/models/bogota-city.glb` reúne una escena de ciudad reutilizable en un único archivo.
 
 ## Vuelo y combate
 
-- Vuelo supersónico, ascenso a la atmósfera y recarga de energía solar.
+- Vuelo con aceleración progresiva, gravedad al dejar de volar y límites de altura y del área urbana.
+- Colisiones barridas con cápsula y desplazamiento con deslizamiento mediante Rapier; los lanzamientos y escombros siguen usando cuerpos rígidos.
 - Visión térmica, aliento gélido, visión de rayos X y golpe sísmico.
 - Combos aéreos con fijación de objetivos, impactos de remate y destrucción con física Rapier 3D.
 - Tráfico, peatones, reacciones de ciudadanos y cambio entre atardecer, día y noche.
@@ -48,3 +51,5 @@ Cada misión incluye contexto narrativo, ubicación y objetivo. Puedes cambiar d
 3. Abre la URL local que muestra la terminal.
 
 La clave de Gemini es opcional para esta versión; `.env.example` incluye el nombre de la variable sin ningún secreto.
+
+Los modelos incluidos son assets originales generados localmente. Para regenerar los GLB con Python estándar, ejecuta `python tools/generate_glb_assets.py` desde la raíz del proyecto.

@@ -26,29 +26,38 @@ export class TrafficSystem {
   }
 
   private initCars() {
-    const lanes = [
-      { axis: 'x', coord: -90, dir: 1 },
-      { axis: 'x', coord: -30, dir: -1 },
-      { axis: 'x', coord: 30, dir: 1 },
-      { axis: 'x', coord: 90, dir: -1 },
-      { axis: 'z', coord: -90, dir: 1 },
-      { axis: 'z', coord: -30, dir: -1 },
-      { axis: 'z', coord: 30, dir: 1 },
-      { axis: 'z', coord: 90, dir: -1 },
-    ];
-
+    const lanes: { axis: 'x' | 'z'; coord: number; dir: 1 | -1; brt?: boolean }[] = [];
+    // Keep vehicle center lines inside the actual 14–20 m asphalt strips.
+    // Two directions share each avenue, with a three-metre lane offset.
+    for (const road of [-540, -300, 300, 540]) {
+      lanes.push(
+        { axis: 'x', coord: road - 3, dir: 1 },
+        { axis: 'x', coord: road + 3, dir: -1 },
+        { axis: 'z', coord: road - 3, dir: 1 },
+        { axis: 'z', coord: road + 3, dir: -1 }
+      );
+    }
+    lanes.push(
+      { axis: 'x', coord: 84.5, dir: 1, brt: true },
+      { axis: 'x', coord: 95.5, dir: -1, brt: true }
+    );
     lanes.forEach((lane) => {
-      for (let i = 0; i < 4; i++) {
-        const offset = -280 + i * 140 + (Math.random() - 0.5) * 30;
-        this.spawnCarInLane(lane.axis as 'x' | 'z', lane.coord, lane.dir as 1 | -1, offset);
+      const count = lane.brt ? 4 : 3;
+      for (let i = 0; i < count; i++) {
+        const offset = lane.brt
+          ? -480 + i * 320 + (Math.random() - 0.5) * 24
+          : -400 + i * 400 + (Math.random() - 0.5) * 32;
+        this.spawnCarInLane(lane.axis, lane.coord, lane.dir, offset, Boolean(lane.brt));
       }
     });
   }
 
-  private spawnCarInLane(axis: 'x' | 'z', coord: number, dir: 1 | -1, offset: number) {
+  private spawnCarInLane(axis: 'x' | 'z', coord: number, dir: 1 | -1, offset: number, isBrtLane = false) {
     const id = `car_${this.idCounter++}`;
     const typeRand = Math.random();
-    const type: TrafficCar['type'] =
+    const type: TrafficCar['type'] = isBrtLane
+      ? 'transmilenio'
+      :
       typeRand < 0.09
         ? 'transmilenio'
         : typeRand < 0.37
