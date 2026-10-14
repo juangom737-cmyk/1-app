@@ -10,8 +10,13 @@ interface TouchControlsProps {
   onTriggerPower: (power: PowerType) => void;
   onReleasePower: () => void;
   onToggleFlight: () => void;
+  onTriggerPunch?: () => void;
+  onTriggerGrabOrSlam?: () => void;
+  onTriggerLockOn?: () => void;
   isFlying: boolean;
   isSupersonic: boolean;
+  isHoldingObject?: boolean;
+  hasLockedTarget?: boolean;
   activePower: PowerType | null;
 }
 
@@ -23,8 +28,13 @@ export const TouchControls: React.FC<TouchControlsProps> = ({
   onTriggerPower,
   onReleasePower,
   onToggleFlight,
+  onTriggerPunch,
+  onTriggerGrabOrSlam,
+  onTriggerLockOn,
   isFlying,
   isSupersonic,
+  isHoldingObject = false,
+  hasLockedTarget = false,
   activePower,
 }) => {
   const joystickRef = useRef<HTMLDivElement | null>(null);
@@ -130,6 +140,47 @@ export const TouchControls: React.FC<TouchControlsProps> = ({
             <FastForward className="w-6 h-6" />
           </button>
         </div>
+
+        {/* Combat actions row */}
+        {(onTriggerPunch || onTriggerGrabOrSlam || onTriggerLockOn) && (
+          <div className="flex gap-2">
+            {onTriggerPunch && (
+              <button
+                onClick={onTriggerPunch}
+                className="px-3 py-2 rounded-xl bg-amber-500/90 active:bg-amber-400 text-slate-950 font-extrabold text-[10px] shadow-lg border border-amber-300"
+                title="Golpe Kriptoniano"
+              >
+                PUÑETAZO
+              </button>
+            )}
+            {onTriggerGrabOrSlam && (
+              <button
+                onClick={onTriggerGrabOrSlam}
+                className={`px-3 py-2 rounded-xl font-extrabold text-[10px] shadow-lg border transition-colors ${
+                  isHoldingObject
+                    ? 'bg-rose-600 text-white border-rose-300 animate-pulse'
+                    : 'bg-slate-800 text-amber-300 border-amber-500/40'
+                }`}
+                title="Agarrar / Lanzar Vehículo"
+              >
+                {isHoldingObject ? 'LANZAR' : 'AGARRAR'}
+              </button>
+            )}
+            {onTriggerLockOn && (
+              <button
+                onClick={onTriggerLockOn}
+                className={`px-3 py-2 rounded-xl font-extrabold text-[10px] shadow-lg border transition-colors ${
+                  hasLockedTarget
+                    ? 'bg-rose-600 text-white border-rose-300 animate-pulse'
+                    : 'bg-slate-800 text-slate-300 border-white/20'
+                }`}
+                title="Fijar Blanco"
+              >
+                BLANCO
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Superpowers cluster */}
         <div className="grid grid-cols-2 gap-2">

@@ -243,4 +243,8 @@ export class DestructionSystem {
       this.dustMat.opacity = 0;
     }
   }
+
+  public dispose() {
+    this.scene.remove(this.destructionGroup);
+  }
 }

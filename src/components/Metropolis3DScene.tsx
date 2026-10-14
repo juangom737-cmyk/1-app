@@ -1250,11 +1250,20 @@ export const Metropolis3DScene: React.FC<Metropolis3DSceneProps> = ({
           currentMissionIndex: crime.activeMissionIndex,
           allMissions: crime.missions,
           activeEnemies: crime.getEnemies(),
-          isHoldingObject: combatRef.current?.isHolding,
-          hasLockedTarget: combatRef.current?.isLockOnActive,
-          lockedTargetInfo: combatRef.current?.getLockedTargetInfo(playerVec),
-          comboStep: combatRef.current?.getComboStep(),
-          citizenDialogue: npcs.getActiveDialogue(),
+          isHoldingObject: Boolean(combatRef.current?.isHolding),
+          hasLockedTarget: Boolean(combatRef.current?.isLockOnActive),
+          lockedTargetInfo:
+            typeof combatRef.current?.getLockedTargetInfo === 'function'
+              ? combatRef.current.getLockedTargetInfo(playerVec)
+              : null,
+          comboStep:
+            typeof combatRef.current?.getComboStep === 'function'
+              ? combatRef.current.getComboStep()
+              : 0,
+          citizenDialogue:
+            typeof npcs.getActiveDialogue === 'function'
+              ? npcs.getActiveDialogue()
+              : null,
           performanceMetrics: currentMetrics,
         });
       }

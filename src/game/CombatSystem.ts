@@ -4,7 +4,7 @@ import { DestructionSystem } from './DestructionSystem';
 import { CrimeManager } from './CrimeManager';
 import { TrafficSystem } from './TrafficSystem';
 import { AudioService } from '../services/AudioService';
-import { EnemyEntity } from '../types/game';
+import { EnemyEntity, LockedTargetInfo } from '../types/game';
 
 export interface HeldObject {
   type: 'car' | 'enemy';
@@ -196,7 +196,11 @@ export class CombatSystem {
   /**
    * Throws the currently held object with superhuman power along aiming direction
    */
-  public throwHeldObject(playerPos: THREE.Vector3, aimDirection: THREE.Vector3): boolean {
+  public throwHeldObject(
+    playerPos: THREE.Vector3,
+    aimDirection: THREE.Vector3,
+    onMissionCompleted?: (hopeGain: number) => void
+  ): boolean {
     if (!this.isHolding || !this.heldObject) return false;
 
     const throwOrigin = playerPos.clone().add(new THREE.Vector3(0, 2.5, 0));
@@ -221,6 +225,7 @@ export class CombatSystem {
         (impactPoint, impactVelocity) => {
           // Impact explosion against building or pavement!
           this.destruction.triggerImpact(impactPoint, new THREE.Vector3(0, 1, 0), impactVelocity * 1.5, true);
+          if (onMissionCompleted) onMissionCompleted(20);
         }
       );
       this.traffic.removeCar(heldId);
@@ -228,6 +233,7 @@ export class CombatSystem {
       // Enemy thrown with high velocity
       this.crime.damageEnemy(heldId, 65, throwOrigin);
       this.physics.spawnDebrisBurst(throwOrigin, aimDirection, 14, 40.0);
+      if (onMissionCompleted) onMissionCompleted(25);
     }
 
     this.isHolding = false;
@@ -237,13 +243,19 @@ export class CombatSystem {
   }
 
   /**
-   * Executes a combo attack (Ground / Aerial strike / Meteor slam)
+   * Executes a combo attack (Ground / Aerial strike / Meteor slam / Lock-on dash)
    */
   public executeAttack(
     playerPos: THREE.Vector3,
     forwardDir: THREE.Vector3,
     isFlying: boolean
-  ): { hitTarget: boolean; damageDealt: number; comboStep: number } {
+  ): {
+    hitTarget: boolean;
+    damageDealt: number;
+    comboStep: number;
+    targetRotY?: number;
+    dashVelocity?: THREE.Vector3;
+  } {
     const now = performance.now();
     if (now - this.lastAttackTime < 800) {
       this.comboStep = (this.comboStep + 1) % 4;
@@ -255,6 +267,20 @@ export class CombatSystem {
 
     const damage = this.comboStep === 3 ? 60 : 25 + this.comboStep * 10;
     let hitTarget = false;
+    let targetRotY: number | undefined;
+    let dashVelocity: THREE.Vector3 | undefined;
+
+    // If locked onto a target, calculate direction, target orientation, and dash impulse
+    if (this.isLockOnActive && this.lockedTarget && this.lockedTarget.health > 0) {
+      const enemyPos = this.getEnemyVector(this.lockedTarget);
+      const toTarget = enemyPos.clone().sub(playerPos);
+      const dist = toTarget.length();
+      if (dist < 45.0) {
+        toTarget.normalize();
+        targetRotY = Math.atan2(-toTarget.x, -toTarget.z);
+        dashVelocity = toTarget.clone().multiplyScalar(isFlying ? 36.0 : 20.0);
+      }
+    }
 
     // Check hit radius: in front of Superman
     const attackReach = 8.5;
@@ -281,7 +307,7 @@ export class CombatSystem {
       }
     }
 
-    return { hitTarget, damageDealt: damage, comboStep: this.comboStep };
+    return { hitTarget, damageDealt: damage, comboStep: this.comboStep, targetRotY, dashVelocity };
   }
 
   /**
@@ -335,5 +361,22 @@ export class CombatSystem {
 
   public getComboStep(): number {
     return this.comboStep;
+  }
+
+  public getLockedTargetInfo(playerPos?: THREE.Vector3): LockedTargetInfo | null {
+    if (!this.isLockOnActive || !this.lockedTarget || this.lockedTarget.health <= 0) {
+      return null;
+    }
+    const dist = playerPos
+      ? playerPos.distanceTo(new THREE.Vector3(this.lockedTarget.x, this.lockedTarget.y, this.lockedTarget.z))
+      : 0;
+
+    return {
+      id: this.lockedTarget.id,
+      type: this.lockedTarget.type,
+      health: Math.max(0, this.lockedTarget.health),
+      maxHealth: this.lockedTarget.maxHealth,
+      distance: Math.round(dist),
+    };
   }
 }
